@@ -1,0 +1,60 @@
+# ===========================================================================
+# 智能短视频分析系统 —— 依赖清单（给别人运行时用）
+#
+# 快速安装（推荐 Python 3.10 ~ 3.13，Windows/Linux 均可）：
+#     pip install -r requirements.txt
+# 中国网络加速（任选一个镜像）：
+#     pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+#     pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+# 运行前还需要：
+# 1) 项目根目录 .env 配置 LLM_API_KEY=sk-xxx（DeepSeek 密钥，第二层大模型）
+# 2) 模型文件：项目 models/ 目录已自带（约 6GB，随项目拷贝/同步即可）；
+#    若没有，首次运行会自动下载（国内可设环境变量 HF_ENDPOINT=https://hf-mirror.com）
+# 3) 启动：python web_ui.py --port 8800   或命令行
+#    python run_pipeline.py --input videos/视频.mp4 --no-hf-mirror --no-ocr-download
+# ===========================================================================
+
+# ------------------------------------------------------------------
+# 核心依赖（必装）
+# ------------------------------------------------------------------
+requests>=2.31
+numpy>=1.24,<3.0
+pydantic>=2.0
+Pillow>=10.0
+soundfile>=0.12
+librosa>=0.10
+imageio-ffmpeg>=0.4          # 自带 ffmpeg 二进制，无需系统安装 ffmpeg
+huggingface-hub>=0.25        # 模型下载与缓存管理
+
+# PyTorch（CPU/GPU 按需；Windows CPU 版可加
+#   --index-url https://download.pytorch.org/whl/cpu 安装更小）
+torch>=2.0
+
+# ------------------------------------------------------------------
+# 第一层四类专业模型
+# ------------------------------------------------------------------
+faster-whisper>=1.0          # ASR 语音识别（模型自动下载 ~1.5GB）
+easyocr>=1.7                 # OCR 画面文字（模型自动下载 ~100MB）
+clip>=1.0                    # CLIP 视觉理解（模型自动下载 ~338MB）
+opencv-python>=4.8           # 图像处理
+
+# ------------------------------------------------------------------
+# VLM 多模态视觉（可选，高质量模式；模型 InternVL2-2B ~4.2GB）
+# 注意版本必须锁定：transformers 5.x 与 InternVL2 远程代码不兼容；
+# sentencepiece 0.2.x 与老词表存在兼容问题（项目内词表已修补，勿重新下载覆盖）
+# ------------------------------------------------------------------
+# transformers==4.51.3
+# einops>=0.8
+# timm>=1.0
+# accelerate>=1.0
+# sentencepiece==0.2.2
+
+# ------------------------------------------------------------------
+# 可选增强
+# ------------------------------------------------------------------
+# python-pptx>=1.0            # 生成汇报 PPT（make_ppt_ai.py）
+# shazamio>=0.5               # Shazam 在线歌曲识别（注意：要求 numpy>=2.2.2，
+#                             # 与 easyocr/librosa 可能有 numpy 版本冲突，慎装）
+# ultralytics>=8.2            # YOLO 物体检测（视觉模块的附加检测）
+

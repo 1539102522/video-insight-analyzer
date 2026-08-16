@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能短视频分析</title>
+<style>
+:root{--primary:#3b5bdb;--primary-dark:#2b4ac0;--bg:#eef1f7;--card:#fff;
+       --text:#1f2937;--muted:#6b7280;--border:#e5e9f2}
+*{box-sizing:border-box}
+body{font-family:'Microsoft YaHei',sans-serif;margin:0;color:var(--text);
+     background:linear-gradient(165deg,#e8eeff 0%,#f6f8fd 45%,#eceffa 100%);
+     background-attachment:fixed;min-height:100vh}
+.container{max-width:1000px;margin:0 auto;padding:20px 16px 70px}
+.header{background:linear-gradient(135deg,#2b4ac0 0%,#5f7bff 100%);border-radius:18px;
+     padding:26px 30px;color:#fff;margin-bottom:18px;box-shadow:0 10px 26px rgba(43,74,192,.28);
+     position:relative;overflow:hidden}
+.header::after{content:'';position:absolute;right:-40px;top:-60px;width:220px;height:220px;
+     border-radius:50%;background:rgba(255,255,255,.12)}
+.header h1{margin:0;font-size:26px;letter-spacing:.5px}
+.header p{margin:8px 0 0;opacity:.88;font-size:13.5px;max-width:640px}
+.card{background:var(--card);border-radius:16px;padding:20px 22px;margin-bottom:18px;
+      box-shadow:0 3px 14px rgba(30,50,100,.07);border:1px solid var(--border)}
+.card h2{margin:0 0 14px;font-size:17px;color:var(--primary-dark);
+         display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;
+      border:2px dashed #b9c6f0;border-radius:16px;padding:32px;background:linear-gradient(180deg,#f8faff,#f2f6ff);
+      cursor:pointer;transition:.2s;text-align:center}
+.drop:hover,.drop.drag{border-color:var(--primary);background:#edf2ff;transform:translateY(-1px)}
+.drop input{display:none}
+.drop .icon{font-size:38px}
+.opts{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center}
+.opt{display:flex;align-items:center;gap:6px;background:#f3f5fb;border:1px solid var(--border);
+     border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;transition:.15s}
+.opt:hover{border-color:#c3d0f5;background:#eef2ff}
+.opt input{accent-color:var(--primary)}
+.sel{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);position:relative}
+.hint{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+     background:#e5e9f2;color:#6b7280;font-size:10px;cursor:pointer;user-select:none;flex-shrink:0;transition:.15s}
+.hint:hover{background:var(--primary);color:#fff}
+.hint-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:60;width:250px;background:#fff;
+     border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 26px rgba(30,50,100,.16);
+     padding:10px 12px;font-size:12px;line-height:1.75;color:var(--text);font-weight:400;display:none;
+     pointer-events:none}
+.hint-pop.show{display:block}
+select,input[type=text],input[type=number]{border:1px solid var(--border);border-radius:8px;padding:7px 10px;
+     font-size:13px;background:#fff;color:var(--text);font-family:inherit;outline:none;transition:.15s}
+select:focus,input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,91,219,.12)}
+select:disabled,input:disabled{background:#f0f2f7;color:#9aa4b2;cursor:not-allowed}
+.btn{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(180deg,#4a6ae0,#3b5bdb);color:#fff;
+     padding:8px 16px;border-radius:10px;text-decoration:none;font-size:13.5px;border:none;
+     cursor:pointer;transition:.15s;box-shadow:0 2px 6px rgba(59,91,219,.25)}
+.btn:hover{background:linear-gradient(180deg,#3b5bdb,#2b4ac0);transform:translateY(-1px)}
+.btn.gray{background:#93a0b4;box-shadow:none}.btn.gray:hover{background:#7c8aa0;transform:none}
+.btn.orange{background:linear-gradient(180deg,#ef9237,#e07b1f)}.btn.orange:hover{background:linear-gradient(180deg,#e07b1f,#c26715)}
+.btn.ghost{background:#eef1f8;color:var(--primary-dark);box-shadow:none}.btn.ghost:hover{background:#dfe6f7;transform:none}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:12px;color:#fff;
+     background:var(--primary);font-weight:500}
+.tag.unknown{background:#8a94a0}.tag.fail{background:#d64545}.tag.ok{background:#2f9e6e}
+.tag.src-video{background:#2f9e6e}.tag.src-web{background:#e07b1f}.tag.src-unknown{background:#8a94a0}
+.tag.gray{background:#8a94a0}
+.cat-歌曲{background:#e64980}.cat-美食{background:#f08c00}.cat-美文{background:#7048e8}.cat-其他{background:#8a94a0}
+.cat-unknown{background:#8a94a0}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 16px}
+.tab{padding:7px 15px;border-radius:999px;border:1px solid var(--border);background:#f7f9ff;cursor:pointer;
+     font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:.15s;font-family:inherit}
+.tab:hover{border-color:#c3d0f5;color:var(--primary-dark)}
+.tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.tabnum{background:rgba(0,0,0,.07);border-radius:999px;padding:1px 8px;font-size:11px}
+.tab.active .tabnum{background:rgba(255,255,255,.25)}
+.hgroup{margin-bottom:18px}
+.hgroup-head{font-weight:700;font-size:14.5px;color:var(--primary-dark);display:flex;align-items:center;gap:7px;margin-bottom:9px}
+.hrow{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border:1px solid var(--border);
+      border-radius:13px;padding:13px 16px;margin-bottom:9px;background:#fff;transition:.15s}
+.hrow:hover{box-shadow:0 5px 16px rgba(40,60,120,.09);border-color:#c7d3f7;transform:translateY(-1px)}
+.hrow-title{font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hrow-reason{color:var(--muted);font-size:12.5px;margin:5px 0 0;line-height:1.55}
+.hrow-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.hrow-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap}
+.empty{color:var(--muted);text-align:center;padding:26px;font-size:13px}
+video{background:#000;border-radius:12px;width:100%;max-height:430px}
+.logbox{height:180px;overflow:auto;background:#141824;border-radius:12px;padding:12px}
+#jobLog{background:none;border:none;color:#c9d4e8;font-family:Consolas,monospace;font-size:12px}
+pre{background:#f7f9fc;border:1px solid var(--border);border-radius:12px;padding:12px;
+    overflow:auto;font-size:12px;white-space:pre-wrap}
+.hidden{display:none}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.kv{margin:5px 0;font-size:13px}
+.kv b{display:inline-block;min-width:90px;color:var(--muted);font-weight:600}
+.badge{background:var(--primary);color:#fff;border-radius:999px;padding:2px 10px;font-size:12px}
+.box{background:#f8faff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.explain{margin:8px 0;font-size:13px}
+.explain summary{cursor:pointer;color:var(--muted);user-select:none}
+.explain summary:hover{color:var(--primary-dark)}
+.explain-body{background:#f8faff;border:1px dashed #c7d3f7;border-radius:10px;padding:10px 12px;
+     margin-top:6px;font-size:12.5px;line-height:1.75;color:#5b6572}
+.qc-step{border:1px solid var(--border);border-left:5px solid #27ae60;border-radius:12px;
+     padding:12px 14px;margin:8px 0;background:#fff}
+.qc-step.fail{border-left-color:#c0392b}
+.qc-step-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.qc-fix{text-align:center;color:#d97706;font-size:12.5px;margin:2px 0 10px;font-weight:600}
+.btn.sm{padding:5px 12px;font-size:12.5px}
+.summarybox{margin:2px 0 12px;border:1px solid #c7d3f7;background:linear-gradient(180deg,#f8faff,#f2f6ff);
+     border-radius:12px;padding:14px 16px}
+.sm-status{color:var(--primary-dark);font-size:13px;margin:8px 0 0;display:flex;align-items:center;gap:8px}
+.sm-body{font-size:13px;line-height:1.7;color:var(--text)}
+.sm-body .sm-h1{font-size:16px;font-weight:700;color:var(--primary-dark);margin:10px 0 6px}
+.sm-body .sm-h2{font-size:14.5px;font-weight:700;color:var(--primary-dark);margin:8px 0 5px}
+.sm-body .sm-h3{font-size:13.5px;font-weight:700;margin:6px 0 4px}
+.sm-body .sm-li{margin:3px 0 3px 14px}
+.progress{height:6px;background:#e5e9f2;border-radius:999px;overflow:hidden;margin-top:4px}
+.progress .bar{height:100%;width:40%;border-radius:999px;
+     background:linear-gradient(90deg,#3b5bdb,#5f7bff);animation:slidebar 1.2s ease-in-out infinite}
+@keyframes slidebar{0%{margin-left:-40%}100%{margin-left:100%}}
+.chatbox{height:380px;overflow:auto;background:#f5f7fb;border:1px solid var(--border);border-radius:14px;
+     padding:14px;display:flex;flex-direction:column;gap:12px}
+.chat-hint{color:var(--muted);font-size:12.5px;text-align:center;padding:20px 10px}
+.msg{display:flex;align-items:flex-start;gap:8px;max-width:82%}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.msg.ai{align-self:flex-start}
+.avatar{width:34px;height:34px;border-radius:10px;background:#fff;border:1px solid var(--border);
+     display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.bubble{padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.65;word-break:break-word;max-width:100%}
+.msg.user .bubble{background:#95ec69;border-top-right-radius:3px}
+.msg.ai .bubble{background:#fff;border:1px solid var(--border);border-top-left-radius:3px}
+.chat-input{margin-top:12px}
+.chat-input input{flex:1}
+.presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 0}
+.preset.active{background:var(--primary);color:#fff}
+.preset.active:hover{background:var(--primary-dark)}
+.mode-switch{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden}
+.mode-switch button{padding:6px 16px;font-size:13px;border:none;background:#f3f5fb;color:var(--muted);
+     cursor:pointer;font-family:inherit}
+.mode-switch button.active{background:var(--primary);color:#fff}
+.batch-list{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.batch-file{display:flex;align-items:center;gap:8px;justify-content:space-between;background:#f7f9ff;
+     border:1px solid var(--border);border-radius:9px;padding:7px 12px;font-size:13px}
+.batch-file .del{color:#c0392b;cursor:pointer;font-size:12px}
+.batch-bar{height:8px;background:#e5e9f2;border-radius:999px;overflow:hidden;margin:8px 0 6px}
+.batch-fill{height:100%;background:linear-gradient(90deg,#3b5bdb,#5f7bff);transition:width .3s}
+.brow{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:10px;
+     padding:8px 12px;margin-bottom:6px;font-size:13px;background:#fff}
+.brow .bname{font-weight:600;word-break:break-all}
+.brow .bstatus{margin-left:auto;color:var(--muted);flex-shrink:0}
+@media (max-width:640px){.hrow{flex-direction:column}.hrow-actions{width:100%}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>🎬 智能短视频分析</h1>
+  <p>上传短视频 → 第一层专业模型取证 → 第二层大模型分类与结构化整理（含出处标注与质检纠错）</p>
+</div>
+
+<div class="card">
+  <h2>📤 上传并分析
+    <span class="mode-switch">
+      <button id="modeSingle" class="active">单视频</button>
+      <button id="modeBatch">批量上传</button>
+    </span>
+  </h2>
+  <label class="drop" id="dropArea" for="fileInput">
+    <span class="icon">🎞️</span>
+    <span id="fileName">点击选择视频，或拖拽到此处</span>
+    <span id="fileHint" style="font-size:12px;color:var(--muted)">支持 MP4 / MOV 等常见格式，时长 ≤ 10 分钟</span>
+    <input type="file" id="fileInput" accept="video/*">
+  </label>
+  <div id="batchList" class="batch-list hidden"></div>
+  <div class="opts" id="modelOpts"></div>
+  <details style="margin-top:10px">
+    <summary style="cursor:pointer;color:var(--muted);font-size:13px">⚙️ 高级参数</summary>
+    <p id="sysinfoLine" style="font-size:12px;color:var(--muted);margin:2px 0 0">💻 正在检测本机配置…</p>
+    <div class="presets">
+      <span style="font-size:12px;color:var(--muted)">📌 推荐搭配：</span>
+      <button class="btn ghost sm preset" data-preset="fast">⚡ 极速</button>
+      <button class="btn ghost sm preset" data-preset="balanced">⚖️ 均衡（默认）</button>
+      <button class="btn ghost sm preset" data-preset="quality">🎯 高质量</button>
+    </div>
+    <p id="presetDesc" style="font-size:12px;color:var(--muted);margin:6px 0 0"></p>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" id="optParallel" checked> 多线程并行分析</label>
+      <span class="hint" data-hint="开启：批量上传的多个视频同时分析（数量由'并行任务数'控制），速度快但占内存多；关闭：严格一个一个排队分析，适合内存紧张的电脑。单视频模式不受影响。">?</span>
+      <span class="sel">抽帧间隔<span class="hint" data-hint="每隔几秒从视频里抽一帧做视觉/OCR 分析。间隔越大速度越快、帧数越少；短视频用 2 秒，长视频或批量可调 5~10 秒。">?</span>
+        <input type="number" id="optKeyframe" value="2.0" min="0.5" max="30" step="0.5" style="width:72px"> 秒
+      </span>
+      <span class="sel">LLM 温度<span class="hint" data-hint="大模型输出的随机程度。0 最稳定（分类/提取推荐），调高后回答更灵活但可能不稳定。">?</span>
+        <input type="number" id="optTemperature" value="0" min="0" max="1" step="0.1" style="width:72px">
+      </span>
+      <span class="sel">质检重试<span class="hint" data-hint="第二层大模型输出不合格时，自动把问题反馈给它重新输出的次数。默认 2 次；仍不过则降级标记为 unknown。">?</span>
+        <input type="number" id="optMaxRetries" value="2" min="0" max="10" step="1" style="width:72px"> 次
+      </span>
+      <span class="sel">ASR 规格<span class="hint" data-hint="语音识别模型大小。medium 最准但最慢；tiny 最快，适合批量处理或口播清晰的视频；small/base 是折中。">?</span>
+        <select id="optAsrModel">
+          <option value="medium">medium（最准，默认）</option>
+          <option value="small">small（快 2~3 倍）</option>
+          <option value="base">base（快 5~8 倍）</option>
+          <option value="tiny">tiny（最快）</option>
+        </select>
+      </span>
+      <span class="sel">ASR 束宽<span class="hint" data-hint="语音解码的搜索宽度。束宽越大越准但越慢；5 最准，1 最快（约快 4 倍）。追求速度可选 1。">?</span>
+        <select id="optAsrBeam">
+          <option value="5">5（最准，默认）</option>
+          <option value="2">2（较快）</option>
+          <option value="1">1（最快）</option>
+        </select>
+      </span>
+      <span class="sel">ASR 线程<span class="hint" data-hint="语音转写使用的 CPU 线程数。按本机核数设置（whisper 在 4~8 线程收益最大），已根据你的电脑配置自动推荐。">?</span>
+        <input type="number" id="optAsrThreads" value="4" min="1" max="32" step="1" style="width:64px">
+      </span>
+      <span class="sel" id="vlmFramesSel">VLM 最大帧数<span class="hint" data-hint="视觉大模型最多分析多少帧（均匀抽样）。VLM 较慢，帧数少速度快；12 帧通常足够判断内容，长视频可适当调高。">?</span>
+        <input type="number" id="optVlmMaxFrames" value="12" min="4" max="60" step="1" style="width:64px">
+      </span>
+      <span class="sel">OCR 最长边<span class="hint" data-hint="送进 OCR 前把画面长边压缩到该像素。1280 基本不丢字幕、速度提升 2~3 倍；追求极致速度可 960/640。">?</span>
+        <select id="optOcrMaxSide">
+          <option value="0">原图（默认）</option>
+          <option value="1920">1920px</option>
+          <option value="1280">1280px（推荐）</option>
+          <option value="960">960px（快）</option>
+          <option value="640">640px（最快）</option>
+        </select>
+      </span>
+      <span class="sel">并行任务数<span class="hint" data-hint="批量上传时同时分析几个视频。核数/内存越多可越大；每个任务约需 2~4GB 内存。已根据你的电脑配置自动推荐。">?</span>
+        <input type="number" id="optConcurrent" value="2" min="1" max="8" step="1" style="width:64px">
+      </span>
+      <span class="sel">OCR 语言<span class="hint" data-hint="画面文字的语种。ch=中文简体（本地已缓存）；其他语种需先下载对应模型才能使用。">?</span>
+        <select id="optOcrLang">
+          <option value="ch">ch（中文简体，本地已缓存）</option>
+        </select>
+      </span>
+      <span class="sel">时长上限<span class="hint" data-hint="超过该时长的视频拒绝分析（0=不限制），防止超长视频分析时间过久。">?</span>
+        <input type="number" id="optMaxDuration" value="10" min="0" max="120" step="1" style="width:72px"> 分钟（0=不限制）
+      </span>
+      <span class="sel">LLM 模型名<span class="hint" data-hint="第二层分析用的云端模型。deepseek-chat 性价比高；deepseek-reasoner 推理更强但更慢、更贵。">?</span>
+        <select id="optLlmModel">
+          <option value="deepseek-chat">deepseek-chat（默认）</option>
+          <option value="deepseek-reasoner">deepseek-reasoner</option>
+        </select>
+      </span>
+      <span class="sel">LLM 超时<span class="hint" data-hint="单次 LLM 请求最长等待秒数。网络慢或模型思考时间久可调大。">?</span>
+        <input type="number" id="optModelTimeout" value="120" min="10" max="600" step="10" style="width:72px"> 秒
+      </span>
+    </div>
+  </details>
+  <div class="opts" style="margin-top:6px">
+    <span class="sel">大模型<span class="hint" data-hint="第二层分析调用的大模型服务：DeepSeek 云端（默认，需 .env 配置 API Key）或老师 HPC 上自部署的 Qwen3（需 SSH 隧道 + 本次作业令牌）。">?</span>
+      <select id="optLlmBackend">
+        <option value="openai">DeepSeek 云端</option>
+        <option value="hpc_qwen">老师 HPC Qwen3（需令牌）</option>
+      </select>
+    </span>
+    <button class="btn" id="uploadBtn">🚀 开始分析</button>
+  </div>
+  <div id="batchBox" class="hidden" style="margin-top:12px">
+    <p id="batchOverall" style="font-weight:600;margin:4px 0"></p>
+    <div class="batch-bar"><div class="batch-fill" id="batchFill" style="width:0%"></div></div>
+    <div id="batchItems"></div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">⚡ 并行任务数在「高级参数」里设置（1~8，默认 2）；ASR 规格/束宽/线程、VLM 帧上限、OCR 压缩也都在高级参数里，可进一步提速。</p>
+  </div>
+  <div id="uploadSuccess" class="hidden" style="margin-top:10px;background:#e7f7ee;border:1px solid #9fdcbb;color:#1f7a4d;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600"></div>
+  <p id="uploadMsg" style="color:var(--primary);font-size:13px"></p>
+  <div id="jobBox" class="hidden" style="margin-top:12px">
+    <p id="jobStatus" style="font-weight:600"></p>
+    <video id="previewVideo" controls playsinline></video>
+    <p style="font-size:12px;color:var(--muted)">↑ 你上传的视频（本地预览）</p>
+    <div class="logbox"><pre id="jobLog"></pre></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🕘 历史记录 <span class="badge" id="historyCount">0</span>
+      <button class="btn ghost" id="historyToggle">展开</button></h2>
+  <div id="historyBody" class="hidden">
+    <div class="tabs" id="historyTabs"></div>
+    <div id="resultsGroups"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>💬 AI 问答（基于收藏视频）</h2>
+  <div class="tabs" id="chatCats">
+    <button class="tab active" data-cat="全部">全部</button>
+    <button class="tab" data-cat="歌曲">🎵 歌曲</button>
+    <button class="tab" data-cat="美食">🍜 美食</button>
+    <button class="tab" data-cat="美文">📖 美文</button>
+    <button class="tab" data-cat="其他">📦 其他</button>
+  </div>
+  <div class="chatbox" id="chatBox"></div>
+  <div class="chat-input row">
+    <input type="text" id="chatInput" placeholder="选好上面的内容范围再提问，比如：这些美食哪个最值得学做？">
+    <button class="btn" id="chatSend">发送</button>
+  </div>
+</div>
+
+<div class="card hidden" id="detailBox">
+  <h2>📊 分析详情 <button class="btn gray" onclick="closeDetail()">✕ 关闭</button></h2>
+  <div id="detailContent"></div>
+</div>
+
+</div>
+
+<script>
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    let msg = '请求失败 ' + r.status;
+    try { msg = (await r.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return r.json();
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function srcTag(src) {
+  const cls = src === '视频' ? 'src-video' : (src === '网络' ? 'src-web' : 'src-unknown');
+  const icon = src === '视频' ? '📹' : (src === '网络' ? '🌐' : '❓');
+  return `<span class="tag ${cls}">${icon} ${esc(src)}</span>`;
+}
+
+function renderOrganized(org) {
+  if (!org || !org.schema || org.schema === 'error') return '<p>无结构化整理</p>';
+  let html = `<p><b>schema</b>：${esc(org.schema)} ${org.schema_valid ? '<span class="tag ok">✓ 校验通过</span>' : '<span class="tag fail">⚠ 校验未通过</span>'}</p>`;
+  const fields = ['dish_name','ingredients','steps','song_name','artist','version',
+                  'original_text','proofread_candidates','author','summary'];
+  for (const k of fields) {
+    const v = org[k];
+    if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) continue;
+    html += `<p class="kv"><b>${esc(k)}</b>`;
+    if (Array.isArray(v)) {
+      html += '<ul>' + v.map(x => `<li>${esc(typeof x === 'object' ? JSON.stringify(x) : x)}</li>`).join('') + '</ul>';
+    } else {
+      html += esc(v);
+    }
+    html += '</p>';
+  }
+  if (org.unknown_fields && org.unknown_fields.length) {
+    html += `<p class="kv"><b>未知状态</b><span class="tag unknown">${esc(org.unknown_fields.join('、'))}</span></p>`;
+  }
+  if (org.provenance && Object.keys(org.provenance).length) {
+    html += '<p><b>信息来源出处</b></p><ul>';
+    for (const [field, entry] of Object.entries(org.provenance)) {
+      const e = entry || {};
+      html += `<li>${esc(field)}：${srcTag(e.source)} ${esc(e.evidence || '')}</li>`;
+    }
+    html += '</ul>';
+  }
+  if (org.notes) html += `<p class="kv"><b>说明</b>${esc(org.notes)}</p>`;
+  return html;
+}
+
+const CAT_ORDER = ['歌曲', '美食', '美文', '其他'];
+const CAT_ICONS = { '歌曲': '🎵', '美食': '🍜', '美文': '📖', '其他': '📦' };
+let historyFilter = '全部';
+let cachedResults = [];
+const summaries = {}; // 每个类别的 AI 总结状态：{status: idle/loading/done/error, text}
+
+function catTag(cat) {
+  const cls = CAT_ORDER.includes(cat) ? 'cat-' + cat : 'cat-unknown';
+  return `<span class="tag ${cls}">${esc(cat)}</span>`;
+}
+
+function rowHtml(i) {
+  return `<div class="hrow">
+    <div class="hrow-main">
+      <div class="hrow-title">${esc(i.name)}${i.has_correction ? ' <span class="tag gray">已人工纠错</span>' : ''}</div>
+      <div class="hrow-reason">${esc(i.reason || '')}</div>
+      <div class="hrow-meta">
+        ${catTag(i.category)}
+        ${i.qc_passed === false ? '<span class="tag fail">质检未通过</span>' : ''}
+        ${i.organized ? `<span class="tag ok">${esc(i.organized)}</span>` : ''}
+      </div>
+    </div>
+    <div class="hrow-actions">
+      <button class="btn" onclick="loadDetail('${esc(i.name)}')">查看</button>
+      <a class="btn gray" href="/api/export?name=${encodeURIComponent(i.name)}&format=md">MD</a>
+      <a class="btn gray" href="/api/export?name=${encodeURIComponent(i.name)}&format=json">JSON</a>
+    </div>
+  </div>`;
+}
+
+function renderResults() {
+  const items = cachedResults;
+  const grouped = {};
+  for (const i of items) {
+    const c = CAT_ORDER.includes(i.category) ? i.category : '其他';
+    (grouped[c] = grouped[c] || []).push(i);
+  }
+  const tabDefs = ['全部', ...CAT_ORDER];
+  document.getElementById('historyTabs').innerHTML = tabDefs.map(c => {
+    const n = c === '全部' ? items.length : (grouped[c] || []).length;
+    return `<button class="tab ${historyFilter === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}<span class="tabnum">${n}</span></button>`;
+  }).join('');
+  document.querySelectorAll('#historyTabs .tab').forEach(b => {
+    b.onclick = () => { historyFilter = b.dataset.cat; renderResults(); };
+  });
+  let html = '';
+  for (const c of CAT_ORDER) {
+    if (historyFilter !== '全部' && historyFilter !== c) continue;
+    const list = grouped[c] || [];
+    if (!list.length) {
+      if (historyFilter === c) html += `<p class="empty">暂无「${esc(c)}」类记录</p>`;
+      continue;
+    }
+    const s = summaries[c];
+    let sHtml = '';
+    if (s && s.status === 'loading') {
+      sHtml = `<div class="summarybox"><div class="progress"><div class="bar"></div></div>
+        <p class="sm-status">⏳ ${esc(s.text || '正在总结…')}</p></div>`;
+    } else if (s && s.status === 'done') {
+      sHtml = `<div class="summarybox"><div class="sm-body">${mdToHtml(s.text)}</div></div>`;
+    } else if (s && s.status === 'error') {
+      sHtml = `<div class="summarybox"><p class="sm-status" style="color:#c0392b">❌ 总结失败：${esc(s.text)}</p></div>`;
+    }
+    html += `<div class="hgroup">
+      <div class="hgroup-head">${CAT_ICONS[c]} ${esc(c)} <span class="badge">${list.length}</span>
+        <button class="btn ghost sm" data-summary="${esc(c)}">✨ AI 总结</button></div>
+      ${sHtml}
+      ${list.map(rowHtml).join('')}
+    </div>`;
+  }
+  if (!items.length) html = '<p class="empty">还没有分析结果，上传第一个视频吧 🎬</p>';
+  document.getElementById('resultsGroups').innerHTML = html;
+  document.getElementById('historyCount').textContent = items.length;
+  document.querySelectorAll('[data-summary]').forEach(b => {
+    b.onclick = () => summarizeCategory(b.dataset.summary);
+  });
+}
+
+// 极简 Markdown → HTML（总结报告内联展示用）
+function mdToHtml(md) {
+  let h = esc(md || '');
+  h = h.replace(/^(#{1,6}) (.*)$/gm, (m, hashes, t) => {
+    const n = hashes.length;
+    return `<div class="${n <= 1 ? 'sm-h1' : (n === 2 ? 'sm-h2' : 'sm-h3')}">${t}</div>`;
+  });
+  h = h.replace(/^[-*] (.*)$/gm, (m, t) => `<div class="sm-li">• ${t}</div>`);
+  h = h.replace(/^(\d+)[.、] (.*)$/gm, (m, n, t) => `<div class="sm-li">${n}. ${t}</div>`);
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  h = h.replace(/\n{2,}/g, '<br>');
+  h = h.replace(/\n/g, '<br>');
+  return h;
+}
+
+// AI 总结某一类：进度显示 → LLM 生成 → 内联展示在类别旁边
+async function summarizeCategory(cat) {
+  if (summaries[cat] && summaries[cat].status === 'loading') return; // 防止重复点击
+  summaries[cat] = { status: 'loading', text: '正在收集「' + cat + '」类的分析记录…' };
+  renderResults();
+  const steps = [
+    '正在收集「' + cat + '」类的分析记录…',
+    '正在调用大模型生成总结（约 10～30 秒）…',
+    '正在整理输出…',
+  ];
+  let si = 0;
+  const ticker = setInterval(() => {
+    si = (si + 1) % steps.length;
+    if (summaries[cat] && summaries[cat].status === 'loading') {
+      summaries[cat].text = steps[si];
+      renderResults();
+    }
+  }, 2500);
+  try {
+    const r = await api('/api/summary?category=' + encodeURIComponent(cat));
+    clearInterval(ticker);
+    summaries[cat] = { status: 'done', text: r.summary || '' };
+  } catch (e) {
+    clearInterval(ticker);
+    summaries[cat] = { status: 'error', text: e.message };
+  }
+  renderResults();
+}
+
+// ---------- AI 问答（微信式聊天，先选内容范围再提问） ----------
+const chatSessions = {}; // 每个内容范围独立的对话：cat -> [{role, content}]
+let chatCat = '全部';
+
+function chatBubble(role, text) {
+  if (role === 'user') {
+    return `<div class="msg user"><div class="avatar">🧑</div><div class="bubble">${esc(text)}</div></div>`;
+  }
+  return `<div class="msg ai"><div class="avatar">🤖</div><div class="bubble">${mdToHtml(text)}</div></div>`;
+}
+
+function renderChat() {
+  const msgs = chatSessions[chatCat] || [];
+  const box = document.getElementById('chatBox');
+  let html = '';
+  if (!msgs.length) {
+    html = '<p class="chat-hint">已选中范围：<b>' + esc(chatCat) + '</b>。AI 会根据这个范围内收藏视频的分析内容回答你的问题。</p>';
+  }
+  html += msgs.map(m => chatBubble(m.role, m.content)).join('');
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const msgs = chatSessions[chatCat] || (chatSessions[chatCat] = []);
+  msgs.push({ role: 'user', content: text });
+  input.value = '';
+  renderChat();
+  const btn = document.getElementById('chatSend');
+  btn.disabled = true;
+  try {
+    const r = await api('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: chatCat, messages: msgs }),
+    });
+    msgs.push({ role: 'assistant', content: r.reply || '' });
+  } catch (e) {
+    msgs.push({ role: 'assistant', content: '⚠️ ' + e.message });
+  }
+  btn.disabled = false;
+  renderChat();
+}
+
+document.getElementById('chatSend').onclick = sendChat;
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) sendChat();
+});
+document.querySelectorAll('#chatCats .tab').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('#chatCats .tab').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    chatCat = b.dataset.cat;
+    renderChat();
+  };
+});
+
+async function loadResults() {
+  try {
+    cachedResults = await api('/api/results');
+  } catch (e) {
+    cachedResults = [];
+  }
+  renderResults();
+}
+
+function renderQcHistory(qc) {
+  const hist = qc.history || [];
+  if (!qc || !Object.keys(qc).length) return '';
+  let html = '<h3>质量控制 / 纠错过程</h3>';
+  html += `<details class="explain"><summary>❓ 这是什么？（自动纠错机制）</summary><div class="explain-body">
+    系统每次让大模型输出分类后，质量检查器会按规则逐项校验：<br>
+    ① 类别是否合法（歌曲/美食/美文/其他）；<br>
+    ② 理由是否为空；<br>
+    ③ 理由是否标明证据来源（必须提到 ASR/OCR/视觉/音频 等证据块）；<br>
+    ④ 理由中引用的原文是否真的存在于证据里（软性检查）。<br>
+    发现硬性错误时，系统把具体问题反馈给大模型，要求修正后重新输出；
+    重试达到上限（默认 2 次）仍不通过，就降级标记为 unknown。下面是完整纠错路径：</div></details>`;
+  if (!hist.length) {
+    html += `<p class="empty">该记录没有逐轮质检历史（早期分析结果），质检结论：${qc.passed ? '✅ 通过' : '❌ 未通过'}（${qc.attempts || 1} 次）</p>`;
+    return html;
+  }
+  hist.forEach((h, idx) => {
+    const bad = !h.passed;
+    html += `<div class="qc-step ${bad ? 'fail' : 'ok'}">
+      <div class="qc-step-head"><b>第 ${esc(h.attempt)} 次输出</b>
+        ${bad ? '<span class="tag fail">❌ 质检未通过</span>' : '<span class="tag ok">✅ 通过</span>'}</div>
+      <p class="kv"><b>输出类别</b><span class="tag ${h.category === 'unknown' ? 'unknown' : ''}">${esc(h.category)}</span></p>
+      <p class="kv"><b>输出理由</b>${esc(h.reason)}</p>
+      ${(h.errors || []).length ? `<p class="kv"><b>质检发现问题</b><span style="color:#c0392b;font-weight:600">${esc(h.errors.join('；'))}</span></p>` : ''}
+      ${(h.warnings || []).length ? `<p class="kv"><b>软性提示</b>${esc(h.warnings.join('；'))}</p>` : ''}
+    </div>`;
+    if (idx < hist.length - 1) {
+      html += '<div class="qc-fix">⬇️ 把上面发现的问题反馈给大模型，要求修正后重新输出</div>';
+    }
+  });
+  html += qc.passed
+    ? `<p style="color:#2f9e6e;font-weight:600;font-size:13px">✅ 最终结论：质检通过（共输出 ${hist.length} 次）</p>`
+    : '<p style="color:#c0392b;font-weight:600;font-size:13px">❌ 最终结论：多次质检未通过</p>';
+  if (qc.downgraded_to_unknown) {
+    html += '<p><span class="tag fail">⚠ 已降级标记为 unknown（多次修正仍不符合规则）</span></p>';
+  }
+  return html;
+}
+
+async function loadDetail(name) {
+  const d = await api('/api/result?name=' + encodeURIComponent(name));
+  const qc = d.qc || {};
+  const suff = (d.fusion || {}).sufficiency || {};
+  const corr = d.human_correction || {};
+  let html = `<p>
+    <span class="tag ${d.category === 'unknown' ? 'unknown' : ''}">类别：${esc(d.category)}</span>
+    <span class="tag ${qc.passed ? 'ok' : 'fail'}">质检：${qc.passed ? '通过' : '未通过'}（${qc.attempts || 1} 次）</span>
+    <span class="tag gray">证据充分性：${esc(suff.level || '?')}（${Math.round((suff.score || 0) * 100)}%）</span>
+  </p>
+  <p class="kv"><b>理由</b>${esc(d.reason)}</p>
+  <p class="kv"><b>使用模型</b>${esc((d.models_used || []).join(', '))}</p>
+  ${qc.warnings && qc.warnings.length ? `<p class="kv"><b>质检提示</b>${esc(qc.warnings.join('；'))}</p>` : ''}
+  <h3>结构化整理</h3>${renderOrganized(d.organized)}
+  ${renderQcHistory(qc)}
+  ${Object.keys(corr).length ? `<h3>已保存的人工纠错</h3><p>${esc(JSON.stringify(corr))}</p>` : ''}
+  <h3>人工纠错</h3>
+  <details class="explain"><summary>❓ 什么是人工纠错？</summary><div class="explain-body">
+    人工纠错 = 由你（人）对 AI 的分类结果做最终把关：如果发现 AI 把视频类别判错了，
+    就在下面重新选择正确类别、填写修改原因（可选），点"保存修改"后写回该视频的分析结果，
+    历史记录里会标注"已人工纠错"。它和上面的自动质检互补：
+    自动质检管"格式与证据引用是否合规"，人工纠错管"结论对不对"。</div></details>
+  <form id="corrForm" class="row">
+    <input type="hidden" name="name" value="${esc(name)}">
+    <select name="category">
+      <option>歌曲</option><option>美食</option><option>美文</option><option>其他</option>
+    </select>
+    <input type="text" name="note" placeholder="修改原因（可选）" size="28">
+    <button class="btn orange" type="submit">保存修改</button>
+  </form>
+  <h3>完整 JSON</h3><pre>${esc(JSON.stringify(d, null, 2))}</pre>`;
+  document.getElementById('detailContent').innerHTML = html;
+  document.getElementById('detailBox').classList.remove('hidden');
+  document.getElementById('detailBox').scrollIntoView({behavior:'smooth'});
+  document.getElementById('corrForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await api('/api/correct', {method: 'POST', body: fd});
+      alert('已保存人工纠错');
+      loadDetail(name); loadResults();
+    } catch (err) { alert(err.message); }
+  };
+}
+
+function closeDetail() { document.getElementById('detailBox').classList.add('hidden'); }
+
+async function loadModels() {
+  // 从后端注册表动态生成模型选项（新增模型无需改前端）
+  try {
+    const defs = await api('/api/models');
+    const box = document.getElementById('modelOpts');
+    let html = '';
+    for (const m of defs) {
+      html += `<label class="opt"><input type="checkbox" data-mid="${esc(m.id)}" ${m.default_enabled ? 'checked' : ''}> ${esc(m.name)}</label>`;
+      if (m.backends && m.backends.length > 0) {
+        // 统一渲染后端下拉框：单后端模型也显示真实名称（如 faster-whisper / easyocr）
+        html += `<span class="sel" id="backendSel_${esc(m.id)}">${esc(m.name)}后端 <select data-backend="${esc(m.id)}">`;
+        for (const b of m.backends) {
+          html += `<option value="${esc(b)}" ${b === m.backend ? 'selected' : ''}>${esc(b)}</option>`;
+        }
+        html += '</select></span>';
+      }
+    }
+    box.innerHTML = html;
+    // 逻辑修正：勾选模型才显示其后端下拉框，取消勾选则隐藏
+    box.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      const sel = document.getElementById('backendSel_' + cb.dataset.mid);
+      const sync = () => { if (sel) sel.style.display = cb.checked ? '' : 'none'; };
+      cb.addEventListener('change', sync);
+      sync();
+    });
+    // 联动：后端选择变化时同步高级参数里的 VLM 专属项
+    const vsel = document.querySelector('#backendSel_visual select');
+    if (vsel) vsel.addEventListener('change', syncVisualParams);
+    syncVisualParams();
+  } catch (e) {
+    console.warn('模型列表加载失败', e);
+  }
+}
+
+// 组装上传表单（模型选择 + 高级参数，单视频/批量共用）
+function buildConfigForm(f) {
+  const fd = new FormData();
+  fd.append('video', f);
+  const disableList = [];
+  document.querySelectorAll('#modelOpts input[type=checkbox]').forEach(cb => {
+    if (!cb.checked) disableList.push(cb.dataset.mid);
+  });
+  fd.append('disable', disableList.join(','));
+  document.querySelectorAll('#modelOpts select[data-backend]').forEach(sel => {
+    fd.append('backend_' + sel.dataset.backend, sel.value);
+  });
+  fd.append('llm_backend', document.getElementById('optLlmBackend').value);
+  fd.append('keyframe_interval', document.getElementById('optKeyframe').value);
+  fd.append('temperature', document.getElementById('optTemperature').value);
+  fd.append('max_retries', document.getElementById('optMaxRetries').value);
+  fd.append('asr_model', document.getElementById('optAsrModel').value);
+  fd.append('ocr_lang', document.getElementById('optOcrLang').value);
+  fd.append('max_duration_minutes', document.getElementById('optMaxDuration').value);
+  fd.append('llm_model', document.getElementById('optLlmModel').value);
+  fd.append('model_timeout', document.getElementById('optModelTimeout').value);
+  // 性能加速参数
+  fd.append('asr_beam', document.getElementById('optAsrBeam').value);
+  fd.append('asr_threads', document.getElementById('optAsrThreads').value);
+  fd.append('vlm_max_frames', document.getElementById('optVlmMaxFrames').value);
+  fd.append('ocr_max_side', document.getElementById('optOcrMaxSide').value);
+  fd.append('concurrent', document.getElementById('optConcurrent').value);
+  return fd;
+}
+
+// ---------- 推荐搭配：一键填写全部加速参数（线程/并行数随本机配置自适应） ----------
+let SYSINFO = { rec_threads: 4, rec_concurrent: 2, cpu_cores: 0, ram_total_gb: 0, has_gpu: false };
+let currentPresetKey = '';
+
+const PRESETS = {
+  fast: {
+    name: '⚡ 极速',
+    desc: '适合批量处理大量视频：ASR tiny + 束宽 1，OCR 压缩到 960px，视觉只抽 8 帧（线程数与并行任务数按本机配置自适应）。',
+    values: { keyframe: 5.0, temperature: 0, maxRetries: 1, asrModel: 'tiny', asrBeam: '1',
+              asrThreads: null, vlmMaxFrames: 8, ocrMaxSide: 960, concurrent: null,
+              concurrentPlus: 1, visualBackend: 'clip' },
+  },
+  balanced: {
+    name: '⚖️ 均衡',
+    desc: '速度与质量兼顾（推荐日常使用）：ASR small + 束宽 2，OCR 压缩到 1280px，视觉 12 帧（线程数与并行任务数按本机配置自适应）。',
+    values: { keyframe: 2.0, temperature: 0, maxRetries: 2, asrModel: 'small', asrBeam: '2',
+              asrThreads: null, vlmMaxFrames: 12, ocrMaxSide: 1280, concurrent: null,
+              concurrentPlus: 0, visualBackend: 'clip' },
+  },
+  quality: {
+    name: '🎯 高质量',
+    desc: '追求识别准确度（正式分析用）：ASR medium + 束宽 5，OCR 原图，视觉切换到 VLM 抽 20 帧，并行 1 个任务（ASR 线程数按核数自适应）。',
+    values: { keyframe: 2.0, temperature: 0, maxRetries: 2, asrModel: 'medium', asrBeam: '5',
+              asrThreads: null, vlmMaxFrames: 20, ocrMaxSide: 0, concurrent: 1,
+              concurrentPlus: 0, visualBackend: 'vlm' },
+  },
+};
+
+// 联动：视觉理解后端选 clip 时隐藏 VLM 专属参数，选 vlm 时显示
+function syncVisualParams() {
+  const sel = document.querySelector('#backendSel_visual select');
+  const el = document.getElementById('vlmFramesSel');
+  if (!el) return;
+  const isVlm = sel && sel.value === 'vlm';
+  el.style.display = isVlm ? '' : 'none';
+}
+
+function applyPreset(key) {
+  const p = PRESETS[key];
+  if (!p) return;
+  currentPresetKey = key;
+  const v = p.values;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('optKeyframe', v.keyframe);
+  set('optTemperature', v.temperature);
+  set('optMaxRetries', v.maxRetries);
+  set('optAsrModel', v.asrModel);
+  set('optAsrBeam', v.asrBeam);
+  // 线程数与并行任务数：优先按本机配置推荐，预设可在此基础上微调
+  set('optAsrThreads', v.asrThreads || SYSINFO.rec_threads);
+  set('optVlmMaxFrames', v.vlmMaxFrames);
+  set('optOcrMaxSide', v.ocrMaxSide);
+  const conc = v.concurrent || Math.max(1, Math.min(8, SYSINFO.rec_concurrent + (v.concurrentPlus || 0)));
+  const parallel = document.getElementById('optParallel');
+  const parOn = !parallel || parallel.checked;
+  set('optConcurrent', parOn ? conc : 1);
+  const cInp = document.getElementById('optConcurrent');
+  if (cInp) cInp.disabled = !parOn;
+  if (v.visualBackend) {
+    const sel = document.querySelector('#backendSel_visual select');
+    if (sel) sel.value = v.visualBackend;
+  }
+  syncVisualParams();
+  document.getElementById('presetDesc').textContent = p.name + '：' + p.desc;
+  document.querySelectorAll('.preset').forEach(b =>
+    b.classList.toggle('active', b.dataset.preset === key));
+}
+
+async function loadSysinfo() {
+  try {
+    SYSINFO = await api('/api/sysinfo');
+  } catch (e) { /* 网络异常时保持默认值 */ }
+  const el = document.getElementById('sysinfoLine');
+  if (el) {
+    const gpu = SYSINFO.has_gpu ? '✅ 有 GPU（视觉可选 VLM）' : '无 GPU（CPU 推理）';
+    el.textContent = `💻 本机配置：${SYSINFO.cpu_cores} 核 CPU · ${SYSINFO.ram_total_gb ? SYSINFO.ram_total_gb + ' GB 内存' : '内存未知'} · ${gpu} — 推荐：ASR 线程 ${SYSINFO.rec_threads}，并行任务 ${SYSINFO.rec_concurrent}（已自动应用）`;
+  }
+  // 用检测到的配置重新应用当前预设
+  applyPreset(currentPresetKey || 'balanced');
+}
+
+document.querySelectorAll('.preset').forEach(b => {
+  b.onclick = () => applyPreset(b.dataset.preset);
+});
+
+// 多线程并行开关：关闭时强制串行（并行任务数=1 并禁用输入）
+let parallelPrevVal = 2;
+document.getElementById('optParallel').addEventListener('change', e => {
+  const inp = document.getElementById('optConcurrent');
+  if (e.target.checked) {
+    inp.disabled = false;
+    inp.value = parallelPrevVal;
+  } else {
+    parallelPrevVal = inp.value;
+    inp.disabled = true;
+    inp.value = 1;
+  }
+});
+
+// ---------- 参数解释气泡：❓ 点击展开，点别处收起 ----------
+function attachHints() {
+  document.querySelectorAll('.hint').forEach(h => {
+    const pop = document.createElement('div');
+    pop.className = 'hint-pop';
+    pop.textContent = h.dataset.hint || '';
+    h.parentElement.appendChild(pop);
+    // 悬停其他 ❓ 时自动收起当前气泡，避免气泡挡住点击
+    h.addEventListener('mouseenter', () => {
+      document.querySelectorAll('.hint-pop.show').forEach(p => p.classList.remove('show'));
+    });
+    h.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasOpen = pop.classList.contains('show');
+      document.querySelectorAll('.hint-pop.show').forEach(p => p.classList.remove('show'));
+      if (!wasOpen) pop.classList.add('show');
+    });
+  });
+}
+document.addEventListener('click', () =>
+  document.querySelectorAll('.hint-pop.show').forEach(p => p.classList.remove('show')));
+attachHints();
+
+async function doUpload() {
+  const f = document.getElementById('fileInput').files[0];
+  if (!f) { alert('请先选择视频文件'); return; }
+  const fd = buildConfigForm(f);
+
+  // 立即本地预览视频（上传后马上能看到画面）
+  const pv = document.getElementById('previewVideo');
+  const localUrl = URL.createObjectURL(f);
+  pv.src = localUrl;
+  pv.load();
+  pv.onerror = () => { pv.style.display = 'none'; };
+  pv.style.display = 'block';
+  const box = document.getElementById('jobBox');
+  box.classList.remove('hidden');
+  box.scrollIntoView({behavior: 'smooth'});
+  document.getElementById('jobStatus').textContent = '上传中…';
+  document.getElementById('uploadMsg').textContent = '上传中…';
+  try {
+    const r = await api('/api/upload', {method: 'POST', body: fd});
+    // 唯一播放器：换成服务端转码流（HEVC 等编码浏览器也能播放）
+    URL.revokeObjectURL(localUrl);
+    pv.src = '/api/video?name=' + encodeURIComponent(r.name);
+    pv.load();
+    pv.style.display = 'block';
+    // 明显提示：上传成功
+    const banner = document.getElementById('uploadSuccess');
+    banner.classList.remove('hidden');
+    banner.textContent = '✅ 上传成功！正在分析：' + r.name + ' …';
+    banner.scrollIntoView({behavior: 'smooth'});
+    document.getElementById('uploadMsg').textContent = '已上传，开始分析：' + r.name;
+    pollJob(r.job_id, r.name);
+  } catch (e) {
+    document.getElementById('uploadMsg').textContent = '';
+    alert(e.message);
+  }
+}
+
+async function pollJob(jobId, name) {
+  const box = document.getElementById('jobBox');
+  const st = document.getElementById('jobStatus');
+  const log = document.getElementById('jobLog');
+  box.classList.remove('hidden');
+  const timer = setInterval(async () => {
+    let s;
+    try { s = await api('/api/status?id=' + jobId); } catch (e) {
+      if (/不存在/.test(e.message)) {
+        clearInterval(timer);
+        st.textContent = `任务 ${name}：已丢失（服务器重启过，请重新上传）`;
+        const banner = document.getElementById('uploadSuccess');
+        banner.textContent = '❌ 任务丢失：' + name + '，请重新上传';
+      }
+      return;
+    }
+    const stMap = { queued: '排队中', running: '分析中', done: '完成', error: '失败' };
+    st.textContent = `任务 ${s.name}：${stMap[s.status] || s.status}`;
+    log.textContent = (s.log || []).join('\n');
+    log.parentElement.scrollTop = log.parentElement.scrollHeight;
+    if (s.status === 'done' || s.status === 'error') {
+      clearInterval(timer);
+      const banner = document.getElementById('uploadSuccess');
+      if (s.status === 'done') {
+        try {
+          const d = await api('/api/result?name=' + encodeURIComponent(name));
+          banner.textContent = '✅ 分析完成：' + name + '（类别：' + d.category + '）';
+        } catch (e) {
+          banner.textContent = '✅ 分析完成：' + name;
+        }
+        loadResults(); loadDetail(name);
+      } else {
+        banner.textContent = '❌ 分析失败：' + name + '，请查看下方日志';
+        banner.style.cssText = 'margin-top:10px;background:#fdeaea;border:1px solid #f3b8b8;color:#b33;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600';
+        alert('分析失败，请查看日志');
+      }
+    }
+  }, 3000);
+}
+
+// ---------- 批量上传模式 ----------
+let uploadMode = 'single';
+
+function setUploadMode(mode) {
+  uploadMode = mode;
+  document.getElementById('modeSingle').classList.toggle('active', mode === 'single');
+  document.getElementById('modeBatch').classList.toggle('active', mode === 'batch');
+  const fi = document.getElementById('fileInput');
+  fi.multiple = mode === 'batch';
+  fi.value = '';
+  document.getElementById('batchList').classList.add('hidden');
+  document.getElementById('batchList').innerHTML = '';
+  document.getElementById('fileName').textContent =
+    mode === 'batch' ? '点击选择多个视频，或拖拽到此处' : '点击选择视频，或拖拽到此处';
+  document.getElementById('fileHint').textContent =
+    mode === 'batch' ? '可一次选择多个文件，将按顺序逐个分析' : '支持 MP4 / MOV 等常见格式，时长 ≤ 10 分钟';
+}
+
+function renderBatchList() {
+  const files = [...document.getElementById('fileInput').files];
+  const box = document.getElementById('batchList');
+  box.classList.toggle('hidden', !files.length);
+  box.innerHTML = files.map((f, i) => `<div class="batch-file">
+    <span>🎞️ ${esc(f.name)}（${(f.size / 1024 / 1024).toFixed(1)} MB）</span>
+    <span class="del" data-i="${i}">✕ 移除</span>
+  </div>`).join('');
+  box.querySelectorAll('.del').forEach(el => {
+    el.onclick = () => {
+      const dt = new DataTransfer();
+      files.forEach((f, j) => { if (String(j) !== el.dataset.i) dt.items.add(f); });
+      document.getElementById('fileInput').files = dt.files;
+      renderBatchList();
+    };
+  });
+}
+
+async function doBatchUpload() {
+  const files = [...document.getElementById('fileInput').files];
+  if (!files.length) { alert('请先在批量模式下选择多个视频文件'); return; }
+  const box = document.getElementById('batchBox');
+  const overall = document.getElementById('batchOverall');
+  const fill = document.getElementById('batchFill');
+  const itemsBox = document.getElementById('batchItems');
+  box.classList.remove('hidden');
+  box.scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('uploadBtn').disabled = true;
+  itemsBox.innerHTML = files.map((f, i) =>
+    `<div class="brow"><span class="bname">${esc(f.name)}</span><span class="bstatus" id="bst_${i}">等待上传…</span></div>`
+  ).join('');
+  let doneCount = 0, okCount = 0;
+  const updateOverall = () => {
+    overall.textContent = `批量分析进度：${doneCount} / ${files.length} 完成（成功 ${okCount}）`;
+    fill.style.width = Math.round(doneCount / files.length * 100) + '%';
+  };
+  updateOverall();
+  // 1) 快速上传全部文件（分析由服务端线程池并行调度，无需等上一个结束）
+  const jobs = [];
+  for (let i = 0; i < files.length; i++) {
+    const st = document.getElementById('bst_' + i);
+    st.textContent = '上传中…';
+    try {
+      const r = await api('/api/upload', { method: 'POST', body: buildConfigForm(files[i]) });
+      jobs.push({ i, name: r.name, jobId: r.job_id, done: false });
+      st.textContent = '⏳ 排队中…';
+    } catch (e) {
+      jobs.push({ i, done: true });
+      st.textContent = '❌ 上传失败：' + e.message;
+      doneCount++;
+      updateOverall();
+    }
+  }
+  // 2) 并行轮询所有任务直到全部结束
+  await new Promise((resolve) => {
+    const timer = setInterval(async () => {
+      const pending = jobs.filter(j => !j.done);
+      if (!pending.length) { clearInterval(timer); resolve(); return; }
+      await Promise.all(pending.map(async (j) => {
+        let s = null, lost = false;
+        try { s = await api('/api/status?id=' + j.jobId); } catch (e) { lost = /不存在/.test(e.message); }
+        if (!s) {
+          if (lost) {
+            j.done = true;
+            document.getElementById('bst_' + j.i).textContent = '❌ 任务丢失（服务器重启过，请重新上传该视频）';
+            doneCount++;
+            updateOverall();
+          }
+          return;
+        }
+        const st = document.getElementById('bst_' + j.i);
+        if (s.status === 'queued') {
+          st.textContent = '⏳ 排队中' + (s.queue_ahead > 0 ? `（前面 ${s.queue_ahead} 个）` : '…');
+        } else if (s.status === 'running') {
+          st.textContent = '分析中…';
+        } else if (s.status === 'done' || s.status === 'error') {
+          j.done = true;
+          if (s.status === 'done') {
+            try {
+              const d = await api('/api/result?name=' + encodeURIComponent(j.name));
+              st.textContent = '✅ 完成（类别：' + d.category + '）';
+            } catch (e) { st.textContent = '✅ 完成'; }
+            okCount++;
+          } else {
+            st.textContent = '❌ 失败';
+          }
+          doneCount++;
+          updateOverall();
+        }
+      }));
+    }, 2500);
+  });
+  overall.textContent = `✅ 批量分析全部结束：共 ${files.length} 个，成功 ${okCount} 个，失败 ${files.length - okCount} 个`;
+  document.getElementById('uploadBtn').disabled = false;
+  loadResults();
+}
+
+document.getElementById('modeSingle').onclick = () => setUploadMode('single');
+document.getElementById('modeBatch').onclick = () => setUploadMode('batch');
+document.getElementById('uploadBtn').onclick = () => {
+  if (uploadMode === 'batch') doBatchUpload();
+  else doUpload();
+};
+
+// 文件选择与拖拽
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', () => {
+  const files = fileInput.files;
+  if (files.length) {
+    document.getElementById('fileName').textContent = uploadMode === 'batch'
+      ? '已选择 ' + files.length + ' 个视频文件'
+      : files[0].name + '（' + (files[0].size / 1024 / 1024).toFixed(1) + ' MB）';
+  }
+  if (uploadMode === 'batch') renderBatchList();
+});
+const dropArea = document.getElementById('dropArea');
+['dragover', 'dragenter'].forEach(ev =>
+  dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('drag'); }));
+['dragleave', 'drop'].forEach(ev =>
+  dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.remove('drag'); }));
+dropArea.addEventListener('drop', e => {
+  if (e.dataTransfer.files.length) {
+    const dt = new DataTransfer();
+    for (const f of e.dataTransfer.files) dt.items.add(f);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change'));
+  }
+});
+
+// 历史记录折叠
+const historyToggle = document.getElementById('historyToggle');
+const historyBody = document.getElementById('historyBody');
+historyToggle.onclick = () => {
+  const collapsed = historyBody.classList.toggle('hidden');
+  historyToggle.textContent = collapsed ? '展开' : '收起';
+};
+
+loadModels();
+loadResults();
+renderChat();
+applyPreset('balanced'); // 先按默认值应用，检测到本机配置后会自动重调
+loadSysinfo();
+</script>
+</body>
+</html>

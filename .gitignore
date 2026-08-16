@@ -1,0 +1,21 @@
+# 本机私有配置（包含 API Key，禁止提交）
+.env
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.pyc
+venv/
+.venv/
+.vscode/
+
+# 视频与运行产物
+videos/
+outputs/
+
+# 模型文件（约 6GB，GitHub 单文件限 100MB；使用说明见 README「准备模型文件」，
+# 如需入库请改用 Git LFS 或单独存储）
+models/
+
+# 临时测试文件
+test_*_tmp.py
+*_tmp.txt
