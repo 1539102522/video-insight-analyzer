@@ -449,6 +449,29 @@ def get_analysis(name: str) -> dict[str, Any] | None:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def _delete_record(name: str) -> dict[str, int]:
+    """删除某条记录的分析产出与对应视频文件，并清理任务状态"""
+    files = videos = 0
+    for suffix in ("_evidence.json", "_evidence_analysis.json", "_evidence_analysis.md"):
+        for p in OUTPUTS_DIR.rglob(name + suffix):
+            try:
+                p.unlink()
+                files += 1
+            except OSError:
+                pass
+    for p in VIDEOS_DIR.rglob(name + ".*"):
+        try:
+            p.unlink()
+            videos += 1
+        except OSError:
+            pass
+    with JOBS_LOCK:
+        for jid in [j for j in JOBS if JOBS[j].get("name") == name]:
+            JOBS.pop(jid, None)
+    _persist_jobs()
+    return {"files": files, "videos": videos}
+
+
 _SYSINFO_CACHE: dict[str, Any] | None = None
 
 
@@ -1242,6 +1265,41 @@ class Handler(BaseHTTPRequestHandler):
                 return
             p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
             self._send_json({"ok": True, "name": name, "category": category})
+        elif path == "/api/delete_record":
+            name = fields.get("name", ("", b""))[1].decode("utf-8", "replace")
+            if not name:
+                self._send_json({"error": "缺少 name"}, 400)
+                return
+            r = _delete_record(name)
+            self._send_json({"ok": True, "name": name, "files": r["files"], "videos": r["videos"]})
+        elif path == "/api/clear_history":
+            # 清除全部历史记录：删除 outputs 下所有分析产物与全部视频文件
+            deleted = videos_deleted = 0
+            try:
+                for p in OUTPUTS_DIR.rglob("*"):
+                    if p.is_file():
+                        try:
+                            p.unlink()
+                            deleted += 1
+                        except OSError:
+                            pass
+                for p in VIDEOS_DIR.rglob("*"):
+                    if p.is_file():
+                        try:
+                            p.unlink()
+                            videos_deleted += 1
+                        except OSError:
+                            pass
+            except Exception:
+                pass
+            with JOBS_LOCK:
+                JOBS.clear()
+            try:
+                if JOBS_FILE.exists():
+                    JOBS_FILE.unlink()
+            except OSError:
+                pass
+            self._send_json({"ok": True, "deleted": deleted, "videos": videos_deleted})
         else:
             self._send_json({"error": "not found"}, 404)
 

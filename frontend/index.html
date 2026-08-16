@@ -269,6 +269,7 @@ pre{background:#f7f9fc;border:1px solid var(--border);border-radius:12px;padding
 
 <div class="card">
   <h2>🕘 历史记录 <span class="badge" id="historyCount">0</span>
+      <button class="btn gray" id="clearHistoryBtn">🗑️ 清除历史</button>
       <button class="btn ghost" id="historyToggle">展开</button></h2>
   <div id="historyBody" class="hidden">
     <div class="tabs" id="historyTabs"></div>
@@ -378,6 +379,7 @@ function rowHtml(i) {
       <button class="btn" onclick="loadDetail('${esc(i.name)}')">查看</button>
       <a class="btn gray" href="/api/export?name=${encodeURIComponent(i.name)}&format=md">MD</a>
       <a class="btn gray" href="/api/export?name=${encodeURIComponent(i.name)}&format=json">JSON</a>
+      <button class="btn gray" onclick="deleteRecord('${esc(i.name)}')">🗑️</button>
     </div>
   </div>`;
 }
@@ -1046,6 +1048,38 @@ historyToggle.onclick = () => {
   const collapsed = historyBody.classList.toggle('hidden');
   historyToggle.textContent = collapsed ? '展开' : '收起';
 };
+
+// 清除历史记录（分析结果 + 视频文件）
+document.getElementById('clearHistoryBtn').onclick = async () => {
+  if (!confirm('确定清除全部历史记录？\n将删除所有分析结果（outputs 目录内容）和全部视频文件。\n此操作不可恢复。')) return;
+  try {
+    const r = await api('/api/clear_history', { method: 'POST' });
+    cachedResults = [];
+    historyFilter = '全部';
+    Object.keys(chatSessions).forEach(k => delete chatSessions[k]);
+    Object.keys(summaries).forEach(k => delete summaries[k]);
+    renderResults();
+    renderChat();
+    alert('已清除 ' + (r.deleted || 0) + ' 条记录、' + (r.videos || 0) + ' 个视频');
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+// 删除单条记录（含其视频）
+async function deleteRecord(name) {
+  if (!confirm('确定删除「' + name + '」？\n将同时删除它的分析结果和视频文件，此操作不可恢复。')) return;
+  try {
+    await api('/api/delete_record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'name=' + encodeURIComponent(name),
+    });
+    loadResults();
+  } catch (e) {
+    alert(e.message);
+  }
+}
 
 loadModels();
 loadResults();
