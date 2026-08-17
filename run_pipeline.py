@@ -170,6 +170,8 @@ def main():
     parser.add_argument("--ocr-lang", type=str, default="ch")
     parser.add_argument("--ocr-max-side", type=int, default=0,
                         help="OCR 帧最长边限制（0=原图；如 1280 可提速 OCR）")
+    parser.add_argument("--ocr-max-frames", type=int, default=0,
+                        help="OCR 最大处理帧数（0=全部帧；>0 均匀抽样，长视频提速）")
     parser.add_argument("--ocr-model-dir", type=str, default=None)
     parser.add_argument("--no-ocr-download", action="store_true",
                         help="禁止 OCR 联网下载模型（本地模型已就绪时使用）")
@@ -336,6 +338,7 @@ def main():
             ocr_model_dir=args.ocr_model_dir,
             ocr_download_enabled=not args.no_ocr_download,
             ocr_max_side=args.ocr_max_side,
+            ocr_max_frames=args.ocr_max_frames,
             visual_backend=args.visual_backend,
             visual_model=args.vlm_model,
             vlm_max_frames=args.vlm_max_frames,

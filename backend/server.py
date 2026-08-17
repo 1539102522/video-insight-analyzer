@@ -119,6 +119,7 @@ def _persist_jobs() -> None:
                     "video_path": j.get("video_path", ""),
                     "status": j.get("status", "queued"),
                     "config": j.get("config", {}),
+                    "duration": j.get("duration", 0),
                     "log": list(j.get("log", deque()))[-100:],
                 }
         tmp = JOBS_FILE.with_suffix(".tmp")
@@ -153,6 +154,7 @@ def _load_jobs() -> None:
                     "log": deque(list(j.get("log", [])) + ["[server] 服务重启，自动恢复任务"], maxlen=200),
                     "config": j.get("config", {}),
                     "video_path": vp,
+                    "duration": j.get("duration", 0),
                 }
                 JOBS[jid] = job
                 JOB_QUEUE.put(jid)
@@ -224,9 +226,9 @@ def run_job(job_id: str, video_path: Path) -> None:
     if cfg.get("llm_model"):
         cmd += ["--model", str(cfg["llm_model"])]
     try:
-        mt = float(cfg.get("model_timeout") or 120.0)
+        mt = float(cfg.get("model_timeout") or 300.0)
     except (TypeError, ValueError):
-        mt = 120.0
+        mt = 300.0
     if 5 <= mt <= 1800:
         cmd += ["--model-timeout", str(mt)]
     # 性能加速参数
@@ -254,6 +256,12 @@ def run_job(job_id: str, video_path: Path) -> None:
         oms = 0
     if oms == 0 or 320 <= oms <= 4096:
         cmd += ["--ocr-max-side", str(oms)]
+    try:
+        omf = int(cfg.get("ocr_max_frames") or 0)
+    except (TypeError, ValueError):
+        omf = 0
+    if omf == 0 or 2 <= omf <= 200:
+        cmd += ["--ocr-max-frames", str(omf)]
     try:
         # 子进程在 Windows 控制台默认用 GBK/cp936 输出，按系统编码解码避免乱码
         enc = locale.getpreferredencoding(False) or "utf-8"
@@ -288,6 +296,7 @@ def start_job(job_id: str, video_path: Path) -> None:
     """把任务放入队列，由工作线程池按并发数调度执行"""
     with JOBS_LOCK:
         JOBS[job_id]["video_path"] = str(video_path)
+        JOBS[job_id]["duration"] = _probe_duration(video_path)
     JOB_QUEUE.put(job_id)
     _persist_jobs()
 
@@ -431,6 +440,59 @@ def _find_video(name: str) -> Path | None:
     return None
 
 
+def _probe_duration(path: Path) -> float:
+    """用 ffprobe 探测视频时长（秒），失败返回 0（用于队列 ETA 估算）"""
+    try:
+        import imageio_ffmpeg
+        ff = imageio_ffmpeg.get_ffmpeg_exe()
+        r = subprocess.run(
+            [ff, "-i", str(path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30,
+        )
+        for line in (r.stderr or "").splitlines():
+            if "Duration:" in line:
+                t = line.split("Duration:", 1)[1].split(",", 1)[0].strip()
+                h, m, s = t.split(":")
+                return int(h) * 3600 + int(m) * 60 + float(s)
+    except Exception:
+        pass
+    return 0.0
+
+
+_ASR_FACTOR = {"tiny": 0.05, "base": 0.15, "small": 0.3, "medium": 0.8}
+
+
+def _estimate_seconds(duration: float, config: dict[str, Any] | None) -> float:
+    """粗略估算单个分析任务耗时（秒），用于队列 ETA 展示"""
+    cfg = config or {}
+    dur = duration if duration and duration > 0 else 30.0
+    try:
+        ki = float(cfg.get("keyframe_interval") or 2.0)
+    except (TypeError, ValueError):
+        ki = 2.0
+    frames = max(1, int(dur / max(ki, 0.5)))
+    asr_model = cfg.get("asr_model") or "medium"
+    asr_t = dur * _ASR_FACTOR.get(asr_model, 0.8)
+    vb = cfg.get("visual_backend") or "clip"
+    if vb == "vlm":
+        try:
+            vmf = int(cfg.get("vlm_max_frames") or 12)
+        except (TypeError, ValueError):
+            vmf = 12
+        visual_t = min(frames, vmf) * 40.0  # VLM 每帧约 40 秒
+    else:
+        visual_t = frames * 0.3  # CLIP 秒级
+    try:
+        omf = int(cfg.get("ocr_max_frames") or 0)
+    except (TypeError, ValueError):
+        omf = 0
+    ocr_frames = min(frames, omf) if omf > 0 else frames
+    ocr_t = ocr_frames * 1.5  # OCR 每帧约 1.5 秒
+    # ASR 与 视觉/OCR 并行，取较大者 + 固定开销
+    return max(asr_t, visual_t + ocr_t) + 8.0
+
+
 def _find_analysis_path(name: str) -> Path | None:
     """按名字找分析结果 JSON（根目录优先，其次 outputs/<类别>/ 子目录）"""
     p = OUTPUTS_DIR / f"{name}_evidence_analysis.json"
@@ -535,7 +597,8 @@ def get_sysinfo() -> dict[str, Any]:
 
 
 def _organize_by_category(name: str) -> None:
-    """分析完成后：把输出与视频归档到 outputs/<类别>/ 与 videos/<类别>/（本地分类保存）"""
+    """分析完成后：把输出与视频归档到 outputs/<类别>/ 与 videos/<类别>/（本地分类保存）。
+    重新识别可能改变类别：会清理其它类别目录里残留的同名文件，并把视频从原目录移到新类别。"""
     ap = _find_analysis_path(name)
     category = "其他"
     if ap is not None:
@@ -549,6 +612,20 @@ def _organize_by_category(name: str) -> None:
     errors: list[str] = []
     out_dir = OUTPUTS_DIR / category
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) 清理其它类别目录里残留的同名产物（重新识别后类别变化，避免留下旧副本）
+    for other in OUTPUTS_DIR.iterdir():
+        if not other.is_dir() or other.name not in CATEGORY_FOLDERS or other.name == category:
+            continue
+        for suffix in ("_evidence.json", "_evidence_analysis.json", "_evidence_analysis.md"):
+            stale = other / (name + suffix)
+            if stale.exists():
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+
+    # 2) 把本次新产物（根目录）移动到目标类别目录
     for suffix in ("_evidence.json", "_evidence_analysis.json", "_evidence_analysis.md"):
         src = OUTPUTS_DIR / (name + suffix)
         if not src.exists():
@@ -560,10 +637,14 @@ def _organize_by_category(name: str) -> None:
             shutil.move(str(src), str(dst))
         except Exception as e:
             errors.append(f"{src.name}: {e}")
+
+    # 3) 把视频从根目录或任何类别子目录移到新类别目录
     vid_dir = VIDEOS_DIR / category
     vid_dir.mkdir(parents=True, exist_ok=True)
-    for src in sorted(VIDEOS_DIR.glob(name + ".*")):
+    for src in sorted(VIDEOS_DIR.rglob(name + ".*")):
         if not src.is_file():
+            continue
+        if src.parent == vid_dir:
             continue
         try:
             dst = vid_dir / src.name
@@ -962,6 +1043,81 @@ def parse_form(headers: dict[str, str], body: bytes) -> dict[str, tuple[str, byt
     }
 
 
+def _build_config(fields: dict[str, tuple[str, Any]]) -> dict[str, Any]:
+    """从表单字段构建分析配置（上传 /api/upload 与重新识别 /api/reanalyze 共用）"""
+
+    def _bool(v: tuple[str, Any]) -> bool:
+        return v[1].decode("utf-8", "replace").strip().lower() not in ("0", "false", "off")
+
+    def _text(key: str, default: str) -> str:
+        return fields.get(key, ("", default.encode()))[1].decode("utf-8", "replace").strip() or default
+
+    def _num(key: str, default: float) -> float:
+        try:
+            return float(_text(key, str(default)))
+        except ValueError:
+            return default
+
+    # 通用开关：未勾选的模型进 disable 列表（兼容旧的 asr/ocr/... 0/1 字段）
+    disabled: set[str] = set()
+    for x in _text("disable", "").split(","):
+        if x.strip():
+            disabled.add(x.strip())
+    for sid in ("asr", "ocr", "visual", "audio"):
+        if sid in fields and not _bool(fields[sid]):
+            disabled.add(sid)
+    # 各模型后端选择（backend_<id>），未知 id 原样记录供以后扩展
+    backends: dict[str, str] = {}
+    for k, v in fields.items():
+        if k.startswith("backend_") and v[1]:
+            backends[k[len("backend_"):]] = v[1].decode("utf-8", "replace").strip()
+
+    return {
+        "disable": sorted(disabled),
+        "visual_backend": backends.get("visual", _text("visual_backend", "clip")),
+        "audio_backend": backends.get("audio", "fingerprint"),
+        "llm_backend": _text("llm_backend", "openai"),
+        "backends": backends,
+        "keyframe_interval": _num("keyframe_interval", 2.0),
+        "temperature": _num("temperature", 0.0),
+        "max_retries": int(_num("max_retries", 2)),
+        "asr_model": _text("asr_model", "medium"),
+        "ocr_lang": _text("ocr_lang", "ch"),
+        "max_duration_minutes": _num("max_duration_minutes", 10.0),
+        "llm_model": _text("llm_model", ""),
+        "model_timeout": _num("model_timeout", 300.0),
+        "asr_beam": int(_num("asr_beam", 5)),
+        "asr_threads": int(_num("asr_threads", 4)),
+        "vlm_max_frames": int(_num("vlm_max_frames", 12)),
+        "ocr_max_side": int(_num("ocr_max_side", 0)),
+        "ocr_max_frames": int(_num("ocr_max_frames", 0)),
+        "concurrent": int(_num("concurrent", get_concurrency())),
+    }
+
+
+def _queue_summary() -> dict[str, Any]:
+    """排队/运行中的任务列表 + 估算剩余时间（供前端队列面板）"""
+    with JOBS_LOCK:
+        jobs = [j for j in JOBS.values() if j.get("status") in ("queued", "running")]
+        jobs = sorted(jobs, key=lambda j: (0 if j.get("status") == "running" else 1, j.get("id", "")))
+    out: list[dict[str, Any]] = []
+    for j in jobs:
+        cfg = j.get("config") or {}
+        dur = float(j.get("duration") or 0)
+        est = _estimate_seconds(dur, cfg)
+        out.append({
+            "id": j.get("id"),
+            "name": j.get("name"),
+            "status": j.get("status"),
+            "duration": round(dur, 1),
+            "estimate": round(est, 1),
+            "visual_backend": cfg.get("visual_backend") or "",
+            "asr_model": cfg.get("asr_model") or "",
+        })
+    total = sum(x["estimate"] for x in out)
+    return {"jobs": out, "count": len(out), "total_estimate": round(total, 1)}
+
+
 # ---------------------------------------------------------------------------
 # HTTP Handler（纯 JSON API + 静态前端）
 # ---------------------------------------------------------------------------
@@ -1132,6 +1288,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": f"总结失败: {e}"}, 500)
                 return
             self._send_json({"category": cat, "summary": text})
+        elif path == "/api/queue":
+            self._send_json(_queue_summary())
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -1183,52 +1341,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "文件过大（限 500MB）"}, 413)
                 return
 
-            def _bool(v: tuple[str, bytes]) -> bool:
-                return v[1].decode("utf-8", "replace").strip().lower() not in ("0", "false", "off")
-
-            def _text(key: str, default: str) -> str:
-                return fields.get(key, ("", default.encode()))[1].decode("utf-8", "replace").strip() or default
-
-            def _num(key: str, default: float) -> float:
-                try:
-                    return float(_text(key, str(default)))
-                except ValueError:
-                    return default
-
-            # 通用开关：未勾选的模型进 disable 列表（兼容旧的 asr/ocr/... 0/1 字段）
-            disabled: set[str] = set()
-            for x in _text("disable", "").split(","):
-                if x.strip():
-                    disabled.add(x.strip())
-            for sid in ("asr", "ocr", "visual", "audio"):
-                if sid in fields and not _bool(fields[sid]):
-                    disabled.add(sid)
-            # 各模型后端选择（backend_<id>），未知 id 原样记录供以后扩展
-            backends: dict[str, str] = {}
-            for k, v in fields.items():
-                if k.startswith("backend_") and v[1]:
-                    backends[k[len("backend_"):]] = v[1].decode("utf-8", "replace").strip()
-
-            config = {
-                "disable": sorted(disabled),
-                "visual_backend": backends.get("visual", _text("visual_backend", "clip")),
-                "audio_backend": backends.get("audio", "fingerprint"),
-                "llm_backend": _text("llm_backend", "openai"),
-                "backends": backends,
-                "keyframe_interval": _num("keyframe_interval", 2.0),
-                "temperature": _num("temperature", 0.0),
-                "max_retries": int(_num("max_retries", 2)),
-                "asr_model": _text("asr_model", "medium"),
-                "ocr_lang": _text("ocr_lang", "ch"),
-                "max_duration_minutes": _num("max_duration_minutes", 10.0),
-                "llm_model": _text("llm_model", ""),
-                "model_timeout": _num("model_timeout", 120.0),
-                "asr_beam": int(_num("asr_beam", 5)),
-                "asr_threads": int(_num("asr_threads", 4)),
-                "vlm_max_frames": int(_num("vlm_max_frames", 12)),
-                "ocr_max_side": int(_num("ocr_max_side", 0)),
-                "concurrent": int(_num("concurrent", get_concurrency())),
-            }
+            config = _build_config(fields)
             # 网页可动态调整并行任务数（1~8）
             try:
                 set_concurrency(int(config["concurrent"]))
@@ -1244,6 +1357,25 @@ class Handler(BaseHTTPRequestHandler):
             name = Path(fname).stem
             job_id = new_job(name, config)
             start_job(job_id, dest)
+            self._send_json({"job_id": job_id, "name": name, "config": config})
+
+        elif path == "/api/reanalyze":
+            # 重新识别：对已有视频用当前选择的模型/参数重新跑流水线（不重新上传文件）
+            name = fields.get("name", ("", b""))[1].decode("utf-8", "replace").strip()
+            if not name:
+                self._send_json({"error": "缺少视频名称"}, 400)
+                return
+            video_file = _find_video(name)
+            if video_file is None:
+                self._send_json({"error": "视频文件不存在（可能已被删除）"}, 404)
+                return
+            config = _build_config(fields)
+            try:
+                set_concurrency(int(config["concurrent"]))
+            except Exception:
+                pass
+            job_id = new_job(name, config)
+            start_job(job_id, video_file)
             self._send_json({"job_id": job_id, "name": name, "config": config})
 
         elif path == "/api/correct":
@@ -1300,6 +1432,30 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             self._send_json({"ok": True, "deleted": deleted, "videos": videos_deleted})
+        elif path == "/api/cancel_job":
+            # 取消排队中的任务（id=all 清空全部排队）
+            jid = fields.get("id", ("", b""))[1].decode("utf-8", "replace").strip()
+            if not jid:
+                self._send_json({"error": "缺少任务 id"}, 400)
+                return
+            removed = 0
+            with JOBS_LOCK:
+                if jid == "all":
+                    for k in [k for k, j in JOBS.items() if j.get("status") == "queued"]:
+                        JOBS.pop(k, None)
+                        removed += 1
+                else:
+                    job = JOBS.get(jid)
+                    if job is None:
+                        self._send_json({"error": "任务不存在"}, 404)
+                        return
+                    if job.get("status") != "queued":
+                        self._send_json({"error": "只能取消排队中的任务（分析中请等待完成）"}, 400)
+                        return
+                    JOBS.pop(jid, None)
+                    removed = 1
+            _persist_jobs()
+            self._send_json({"ok": True, "removed": removed})
         else:
             self._send_json({"error": "not found"}, 404)
 

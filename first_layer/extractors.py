@@ -29,6 +29,7 @@ class ExtractorSpec:
     default_enabled: bool = True
     backends: list[str] = field(default_factory=list)  # 可选后端列表（供前端下拉）
     backend: str = ""                         # 当前后端（默认取 backends[0]）
+    backend_labels: dict[str, str] = field(default_factory=dict)  # 后端 id -> 显示名（前端下拉展示用）
 
     # ---- 以下由 pipeline.py 注册时填充（避免本模块反向依赖具体提取器类）----
     cls: Any = None                           # 提取器类
@@ -64,6 +65,7 @@ def describe_registry() -> list[dict[str, Any]]:
             "default_enabled": s.default_enabled,
             "backends": s.backends,
             "backend": s.backend,
+            "backend_labels": s.backend_labels,
         }
         for s in EXTRACTOR_REGISTRY.values()
     ]

@@ -57,6 +57,7 @@ def _ocr_kwargs(p: "FirstLayerPipeline") -> dict[str, Any]:
         "model_dir": p.ocr_model_dir,
         "download_enabled": p.ocr_download_enabled,
         "max_side": p.ocr_max_side,
+        "max_frames": p.ocr_max_frames,
     }
 
 
@@ -83,6 +84,7 @@ register_extractor(ExtractorSpec(
     id="visual", name="视觉理解", input_key="keyframes",
     cls=VisualExtractor, make_kwargs=_visual_kwargs,
     backends=["clip", "vlm"],
+    backend_labels={"clip": "CLIP (ViT-B/32)", "vlm": "InternVL2-2B (VLM)"},
 ))
 register_extractor(ExtractorSpec(
     id="audio", name="音频识别", input_key="audio",
@@ -125,6 +127,7 @@ class FirstLayerPipeline:
         ocr_model_dir: str | None = None,
         ocr_download_enabled: bool = True,
         ocr_max_side: int = 0,
+        ocr_max_frames: int = 0,
         visual_backend: str = "clip",
         visual_model: str = "OpenGVLab/InternVL2-2B",
         vlm_max_frames: int = 12,
@@ -166,6 +169,7 @@ class FirstLayerPipeline:
         self.ocr_model_dir = ocr_model_dir
         self.ocr_download_enabled = ocr_download_enabled
         self.ocr_max_side = ocr_max_side
+        self.ocr_max_frames = ocr_max_frames
         self.visual_backend = visual_backend
         self.visual_model = visual_model
         self.vlm_max_frames = vlm_max_frames
@@ -473,6 +477,7 @@ def extract_evidence(
     ocr_model_dir: str | None = None,
     ocr_download_enabled: bool = True,
     ocr_max_side: int = 0,
+    ocr_max_frames: int = 0,
     visual_backend: str = "clip",
     visual_model: str = "OpenGVLab/InternVL2-2B",
     vlm_max_frames: int = 12,
@@ -512,6 +517,7 @@ def extract_evidence(
         ocr_model_dir=ocr_model_dir,
         ocr_download_enabled=ocr_download_enabled,
         ocr_max_side=ocr_max_side,
+        ocr_max_frames=ocr_max_frames,
         visual_backend=visual_backend,
         visual_model=visual_model,
         vlm_max_frames=vlm_max_frames,

@@ -25,6 +25,7 @@ class OCRExtractor:
         use_gpu: bool = True,
         min_confidence: float = 0.5,
         max_side: int = 0,                   # 帧最长边限制（0=原图；如 1280 可提速 OCR）
+        max_frames: int = 0,                 # 最大处理帧数（0=全部帧；>0 均匀抽样提速）
         model_dir: str | None = None,        # 本地模型目录（EasyOCR）
         download_enabled: bool = True,       # 是否允许自动下载模型
         **kwargs: Any,
@@ -34,6 +35,7 @@ class OCRExtractor:
         self.use_gpu = use_gpu
         self.min_confidence = min_confidence
         self.max_side = max_side
+        self.max_frames = max_frames
         if model_dir is None:
             # 默认用项目内 models/easyocr 目录（模型已随项目存放）
             _root = Path(__file__).resolve().parent.parent
@@ -65,6 +67,15 @@ class OCRExtractor:
         if not frame_files:
             logger.warning("关键帧目录为空: %s", keyframe_dir)
             return OCREvidence(model_name=self.engine)
+
+        if self.max_frames > 0 and len(frame_files) > self.max_frames:
+            # 均匀抽样控制帧数上限（长视频提速，字幕/文字通常分布均匀）
+            total = len(frame_files)
+            idxs = [round(i * (total - 1) / (self.max_frames - 1))
+                    for i in range(self.max_frames)]
+            frame_files = [frame_files[i] for i in sorted(set(idxs))]
+            logger.info("OCR 帧数 %d → 抽样 %d 帧（max_frames=%d）",
+                        total, len(frame_files), self.max_frames)
 
         evidence = OCREvidence(model_name=self.engine)
         all_segments: list[OCRSegment] = []
