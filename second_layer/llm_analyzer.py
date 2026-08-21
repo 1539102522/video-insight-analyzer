@@ -61,80 +61,18 @@ DEFAULT_HPC_QWEN_URL = "http://127.0.0.1:8000"  # 本机 SSH 隧道端口，端�
 HPC_QWEN_MESSAGE_KEY = "message"  # /api/chat 请求体里消息的字段名；拿到 api_server.py 后按实际接口调整
 HPC_QWEN_MAX_MESSAGE = 7800       # 手册：单条消息最大 8192 字符，留余量
 
-SYSTEM_PROMPT = """你是短视频内容分析专家。我会给你第一层专业模型（ASR 语音识别、OCR 画面文字、视觉理解、音频识别）提取的结构化证据，请基于证据对视频做深度分析。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块、不要额外解释），字段如下：
-{
-  "summary": "视频内容一句话概述",
-  "category": "歌曲 | 美食 | 美文 | 其他 之一",
-  "title_suggestion": "为视频起的标题",
-  "is_original": "原创 / 搬运 / 翻唱 / 二创 之一，附一句判断依据",
-  "timeline": [
-    {"start": 0.0, "end": 5.0, "description": "该时间段内容描述"}
-  ],
-  "key_entities": ["关键实体：人物/品牌/歌曲/菜品等"],
-  "risk_flags": ["风险点：疑似侵权、低俗、广告营销、诈骗等；没有则为空数组"],
-  "reasoning": "分析依据，需引用证据原文并标明来源模型（ASR 说了什么、OCR 看到什么、视觉模型看到什么）"
-}
-2. 结论必须严格基于给定证据，证据不足时在对应字段明确说明，禁止编造。
-3. 用中文回答。"""
-
-CHECK_SYSTEM_TEMPLATE = """你是短视频内容判断助手。请基于证据判断：这个视频是否与「{keyword}」相关。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{{"answer": "是", "reason": "一句话理由，引用证据原文并标明来源模型（如：CLIP 视觉分析…，OCR 识别到…）"}}
-2. answer 只能是 "是" 或 "不是"。
-3. 判断严格基于证据，禁止编造。"""
-
-QUESTION_SYSTEM_TEMPLATE = """你是短视频内容分析助手。请基于证据回答用户的问题。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{{"answer": "问题的答案，简洁准确", "reason": "依据，引用证据原文并标明来源模型"}}
-2. 严格基于证据回答，证据不足时明确说明，禁止编造。"""
-
-CLASSIFY_SYSTEM_TEMPLATE = """你是短视频分类助手。请基于证据，从以下类别中选出最匹配的一个：
-歌曲 / 美食 / 美文 / 其他
-
-类别定义：
-- 歌曲：以音乐/歌词/演唱为主体（ASR 转出歌词/演唱、画面为 MV 或唱歌/演奏场景）；
-- 美食：以食物/菜品/烹饪/饮食制作为主体——含酿酒、发酵、蒸馏、自制饮品、腌渍等
-  （画面大量食物/食材特写、OCR 出现菜名、ASR 提及食材/制作/酿制过程）；
-- 美文：以优美文字内容为主体——情感语录/励志金句/散文诗歌/人生哲理等文案，
-  常配风景或图片背景与背景音乐，文字打在屏幕上或温柔朗读；
-- 其他：不属于以上三类的视频（游戏、知识科普、Vlog、广告等），暂不深入处理，直接输出其他。
-
-判断原则：
-1. 综合所有证据判断视频的"主要内容"，区分主证据与背景元素：
-   - ASR 识别到歌词/演唱、画面为 MV/唱歌场景 → 优先判为 歌曲；
-   - 画面主体是大量食物/菜品/烹饪/饮食制作、OCR 出现菜名、ASR 提及酿制/制作 → 判为 美食；
-   - 画面/OCR 主体是文字文案（语录/金句/散文诗歌），常配风景和背景音乐 → 判为 美文；
-   - 只个别画面出现食物、主体是唱歌/文字等 → 仍按主体判断，不要被背景干扰。
-   - 多线叙事（剧情/故事线 + 美食线并存）：不能只看到一条剧情线就判为其他。只要食物/菜品/烹饪/
-     吃播/饮食制作这条"美食线"从头到尾持续、反复地穿插出现——即视频多个时间段都出现食物特写、
-     菜品或与饮食相关的内容（而非偶发的一两个镜头），即便同时穿插剧情对话，也应判为 美食；
-     只有当食物只零散出现一两次、剧情对话是压倒性主体时，才判为 其他。
-   - 特别注意：美文视频几乎都有背景音乐，主体是"文字内容"而非音乐，不要因有配乐误判为歌曲。
-   - 特别注意：仅"检测到背景音乐"（无人声、无歌词）不足以判为歌曲——美食/酿酒类视频常配
-     背景音乐，判断主体要看画面与 ASR 内容，而非音乐有无。
-   - 特别注意：酿酒/发酵/蒸馏/自制食品等"饮食制作"属美食；CLIP 若把酿酒蒸馏设备（锅、坛、
-     导管、酒液）误判为"录音棚/演播室"等场景，且同时出现食物/食材画面、又无歌词演唱证据时，
-     应判为美食而非歌曲，不要被 CLIP 的场景标签误导。
-2. reason 必须提及所有非空证据块（ASR / OCR / 视觉 / 音频）并解释取舍：
-   例如主体是美食但检测到背景音乐时，要写"视频有背景音乐（1.1s-10.1s）但无人声，
-   画面主体全程是美食特写，故判为美食"，不能只提视觉而省略音频证据。
-2.5 来源模型名必须与证据块标题标注的一致：证据标题写【视觉理解 · 模型 OpenGVLab/InternVL2-2B】
-   就写"InternVL2 视觉分析"，写【视觉理解 · 模型 CLIP (ViT-B/32)】才写"CLIP 视觉分析"；
-   禁止一律写成 CLIP。
-3. 证据不足时（如没有语音、没有文字、也没有视觉信息），在 reason 中明确说明"证据不足"。
-4. 表述规范：区分"人声/语音"与"声音/音乐"两个概念——
-   - ASR 无文字但音频检测到音乐时，应写"有音乐但无人声"，禁止写成"无语音"或"无声音"；
-   - 只有音频也完全无音乐时才写"无声音"。
-5. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{{"category": "歌曲|美食|美文|其他 之一", "reason": "一句话理由，引用证据原文并标明来源模型，例如：CLIP 视觉分析显示大量美食特写，OCR 识别到'深夜食堂必点菜'，主体为美食。"}}
-6. 严格基于证据，禁止编造。"""
+# 提示词已收口到 second_layer/prompts.py（支持网页编辑 + 场景推荐 + 用户自定义覆盖）。
+# 这里保留同名默认常量以兼容函数签名默认值，运行时请使用 get_* 系列函数读取最新配置。
+from .prompts import (  # noqa: E402
+    DEFAULT_SYSTEM_PROMPT as SYSTEM_PROMPT,
+    DEFAULT_CHECK_TEMPLATE as CHECK_SYSTEM_TEMPLATE,
+    DEFAULT_QUESTION_TEMPLATE as QUESTION_SYSTEM_TEMPLATE,
+    DEFAULT_CLASSIFY_TEMPLATE as CLASSIFY_SYSTEM_TEMPLATE,
+    get_system_prompt,
+    get_check_template,
+    get_question_template,
+    get_classify_template,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +459,7 @@ def analyze_evidence(
 
     result = call_llm(
         user_content, api_key, base_url, model, temperature, timeout,
+        system_prompt=get_system_prompt(),
         backend=backend,
     )
 
@@ -543,7 +482,7 @@ def check_relevance(
 ) -> dict[str, Any]:
     """快速判断视频是否与关键词相关，只返回 是/不是"""
     user_content = build_evidence_text(evidence)
-    system_prompt = CHECK_SYSTEM_TEMPLATE.format(keyword=keyword)
+    system_prompt = get_check_template().format(keyword=keyword)
     logger.info("相关性判断: 「%s」", keyword)
     result = call_llm(
         user_content, api_key, base_url, model, temperature, timeout,
@@ -572,7 +511,7 @@ def ask_question(
     logger.info("回答问题: %s", question)
     result = call_llm(
         user_content, api_key, base_url, model, temperature, timeout,
-        system_prompt=QUESTION_SYSTEM_TEMPLATE,
+        system_prompt=get_question_template(),
         backend=backend,
     )
     result.setdefault("question", question)
@@ -596,7 +535,7 @@ def classify_evidence(
     logger.info("自动分类: 歌曲/美食/美文/其他")
     result = call_llm(
         user_content, api_key, base_url, model, temperature, timeout,
-        system_prompt=CLASSIFY_SYSTEM_TEMPLATE,
+        system_prompt=get_classify_template(),
         backend=backend,
     )
     result.setdefault("video_path", evidence.get("video_path", ""))

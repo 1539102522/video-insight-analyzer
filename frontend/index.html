@@ -160,6 +160,35 @@ pre{background:#f7f9fc;border:1px solid var(--border);border-radius:12px;padding
 .toast.open .tdetail{display:block}
 @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
 @media (max-width:640px){.hrow{flex-direction:column}.hrow-actions{width:100%}}
+/* ---------- 提示词与场景设置 ---------- */
+.scenario-chips{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 10px}
+.scenario-chip{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:14px;
+  border:1px solid var(--border);background:#f7f9ff;cursor:pointer;font-size:13.5px;font-weight:600;
+  color:var(--muted);transition:.15s;font-family:inherit}
+.scenario-chip:hover{border-color:#c3d0f5;color:var(--primary-dark);transform:translateY(-1px);
+  box-shadow:0 4px 12px rgba(30,50,100,.1)}
+.scenario-chip .sc-ico{font-size:18px;line-height:1}
+.scenario-chip.active{color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(30,50,100,.24)}
+.sc-chip-自动.active{background:linear-gradient(135deg,#3b5bdb,#5f7bff)}
+.sc-chip-美食.active{background:linear-gradient(135deg,#f08c00,#e07b1f)}
+.sc-chip-歌曲.active{background:linear-gradient(135deg,#e64980,#d6336c)}
+.sc-chip-美文.active{background:linear-gradient(135deg,#7048e8,#5f3dc4)}
+.sc-chip-其他.active{background:linear-gradient(135deg,#8a94a0,#687385)}
+.prompt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.prompt-col{display:flex;flex-direction:column;min-width:0}
+.prompt-col label,.prompt-org-head{font-size:13px;font-weight:600;color:var(--primary-dark);
+  margin-bottom:7px;display:flex;align-items:center;gap:6px;position:relative}
+.prompt-ta{width:100%;min-height:230px;resize:vertical;border:1px solid var(--border);border-radius:12px;
+  padding:12px 14px;font-family:Consolas,'Microsoft YaHei',monospace;font-size:12.5px;line-height:1.7;
+  color:var(--text);background:#fbfcff;outline:none;transition:.15s;box-sizing:border-box}
+.prompt-ta:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,91,219,.12);background:#fff}
+.prompt-more{margin-top:12px}
+.prompt-more summary{cursor:pointer;color:var(--muted);font-size:13px;user-select:none}
+.prompt-more summary:hover{color:var(--primary-dark)}
+.prompt-more .pm-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px}
+.prompt-more label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px}
+.prompt-status{font-size:13px;color:var(--muted)}
+@media (max-width:720px){.prompt-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -279,6 +308,37 @@ pre{background:#f7f9fc;border:1px solid var(--border);border-radius:12px;padding
     <video id="previewVideo" controls playsinline></video>
     <p style="font-size:12px;color:var(--muted)">↑ 你上传的视频（本地预览）</p>
     <div class="logbox"><pre id="jobLog"></pre></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🧠 提示词与场景</h2>
+  <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 8px">选择场景一键套用推荐提示词；编辑后点「保存并应用」，将对后续所有分析生效。</p>
+  <div class="scenario-chips" id="scenarioChips"></div>
+  <p id="scenarioDesc" style="font-size:12px;color:var(--muted);margin:0 0 12px"></p>
+  <div class="prompt-grid">
+    <div class="prompt-col">
+      <label>🏷️ 分类提示词<span class="hint" data-hint="决定大模型把视频归入哪一类（歌曲/美食/美文/其他）。输出 JSON：{&quot;category&quot;:…, &quot;reason&quot;:…}，请保持该结构以便质检。">?</span></label>
+      <textarea class="prompt-ta" id="promptClassify" spellcheck="false"></textarea>
+    </div>
+    <div class="prompt-col">
+      <div class="prompt-org-head">🗂️ 整理提示词<span class="hint" data-hint="分类后，用对应类别的整理器把证据整理成结构化结果（菜谱/歌单/文稿等）。点上方类别标签切换编辑。">?</span></div>
+      <div class="tabs" id="promptOrgTabs" style="margin:0 0 8px"></div>
+      <textarea class="prompt-ta" id="promptOrg" spellcheck="false"></textarea>
+    </div>
+  </div>
+  <details class="prompt-more">
+    <summary>🔽 更多提示词（综合分析 / 相关性判断 / 问答）</summary>
+    <div class="pm-grid">
+      <div><label>综合分析提示词（--analyze）</label><textarea class="prompt-ta" id="promptSystem" spellcheck="false" style="min-height:120px"></textarea></div>
+      <div><label>相关性判断提示词（含 {keyword} 占位符）</label><textarea class="prompt-ta" id="promptCheck" spellcheck="false" style="min-height:90px"></textarea></div>
+      <div><label>问答提示词</label><textarea class="prompt-ta" id="promptQuestion" spellcheck="false" style="min-height:90px"></textarea></div>
+    </div>
+  </details>
+  <div class="opts" style="margin-top:14px">
+    <button class="btn" id="promptSaveBtn">💾 保存并应用</button>
+    <button class="btn gray" id="promptResetBtn">↩️ 恢复默认</button>
+    <span class="prompt-status" id="promptStatus"></span>
   </div>
 </div>
 
@@ -1299,7 +1359,120 @@ document.getElementById('clearQueueBtn').onclick = async () => {
   pollQueue();
 };
 
+// ---------- 提示词与场景设置 ----------
+let SCENARIOS = [];
+let promptScenario = '自动';
+let promptOrgCat = '美食';
+let draftOrganizers = {};
+const ORG_CATS = ['歌曲', '美食', '美文', '其他'];
+
+function flushOrg() {
+  draftOrganizers[promptOrgCat] = document.getElementById('promptOrg').value;
+}
+
+function renderScenarioChips() {
+  const box = document.getElementById('scenarioChips');
+  box.innerHTML = SCENARIOS.map(s =>
+    `<button class="scenario-chip sc-chip-${esc(s.key)} ${promptScenario === s.key ? 'active' : ''}" data-key="${esc(s.key)}">
+       <span class="sc-ico">${s.icon}</span><span>${esc(s.name)}</span></button>`).join('');
+  box.querySelectorAll('.scenario-chip').forEach(b => {
+    b.onclick = () => selectScenario(b.dataset.key);
+  });
+  const desc = SCENARIOS.find(s => s.key === promptScenario);
+  document.getElementById('scenarioDesc').textContent = desc ? desc.description : '';
+}
+
+function renderOrgTabs() {
+  document.getElementById('promptOrgTabs').innerHTML = ORG_CATS.map(c =>
+    `<button class="tab ${promptOrgCat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+  document.querySelectorAll('#promptOrgTabs .tab').forEach(t => {
+    t.onclick = () => switchOrgTab(t.dataset.cat);
+  });
+}
+
+function switchOrgTab(cat) {
+  flushOrg();
+  promptOrgCat = cat;
+  renderOrgTabs();
+  document.getElementById('promptOrg').value = draftOrganizers[cat] || '';
+}
+
+function selectScenario(key) {
+  promptScenario = key;
+  const s = SCENARIOS.find(x => x.key === key);
+  if (s) {
+    document.getElementById('promptClassify').value = s.classify || '';
+    draftOrganizers = Object.assign({}, s.organizers || {});
+    document.getElementById('promptOrg').value = draftOrganizers[promptOrgCat] || '';
+  }
+  renderScenarioChips();
+}
+
+function loadPrompts() {
+  return api('/api/prompts').then(d => {
+    SCENARIOS = d.scenarios || [];
+    document.getElementById('promptSystem').value = d.system || '';
+    document.getElementById('promptCheck').value = d.check || '';
+    document.getElementById('promptQuestion').value = d.question || '';
+    document.getElementById('promptClassify').value = d.classify || '';
+    draftOrganizers = Object.assign({}, d.organizers || {});
+    document.getElementById('promptOrg').value = draftOrganizers[promptOrgCat] || '';
+    renderScenarioChips();
+    renderOrgTabs();
+    if (d.customized) {
+      const st = document.getElementById('promptStatus');
+      st.textContent = '已加载自定义提示词';
+      st.style.color = '#2f9e6e';
+    }
+  }).catch(e => console.warn('提示词加载失败', e));
+}
+
+function collectPromptPayload() {
+  flushOrg();
+  return {
+    system: document.getElementById('promptSystem').value,
+    check: document.getElementById('promptCheck').value,
+    question: document.getElementById('promptQuestion').value,
+    classify: document.getElementById('promptClassify').value,
+    organizers: draftOrganizers,
+  };
+}
+
+async function savePrompts() {
+  const st = document.getElementById('promptStatus');
+  try {
+    await api('/api/prompts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts: collectPromptPayload() }),
+    });
+    st.textContent = '✅ 已保存，后续分析将使用新提示词';
+    st.style.color = '#2f9e6e';
+    await loadPrompts();
+  } catch (e) {
+    st.textContent = '❌ 保存失败：' + e.message;
+    st.style.color = '#c0392b';
+  }
+}
+
+async function resetPrompts() {
+  if (!confirm('确定恢复全部默认提示词？（会清空已保存的自定义提示词）')) return;
+  const st = document.getElementById('promptStatus');
+  try {
+    await api('/api/prompts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reset' }),
+    });
+    st.textContent = '✅ 已恢复默认提示词';
+    st.style.color = '#2f9e6e';
+    await loadPrompts();
+  } catch (e) { alert(e.message); }
+}
+
+document.getElementById('promptSaveBtn').onclick = savePrompts;
+document.getElementById('promptResetBtn').onclick = resetPrompts;
+
 loadModels();
+loadPrompts();
 loadResults();
 renderChat();
 applyPreset('balanced'); // 先按默认值应用，检测到本机配置后会自动重调

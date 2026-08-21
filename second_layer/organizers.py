@@ -31,6 +31,7 @@ from .llm_analyzer import (
     build_evidence_text,
     call_llm,
 )
+from .prompts import get_organizer_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -96,94 +97,31 @@ class OtherResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# 整理器提示词（含出处标注规则）
-# ---------------------------------------------------------------------------
-
-_PROVENANCE_RULE = (
-    "出处标注规则（必须遵守）：每条主要信息都要在 provenance 中标明出处——\n"
-    "  - source=\"视频\"：信息在证据原文中直接出现（写明证据依据，如 OCR 识别到...）；\n"
-    "  - source=\"网络\"：证据中没有直接出现，但根据常识/知识可以合理推断"
-    "（写明推断依据，如 ASR 歌词'在這個世界多少人走下去'可辨认出是《稻香》）；\n"
-    "  - source=\"未知\"：既无直接证据、也无法合理推断时才用。\n"
-    "不要过度保守：只要根据证据内容能合理推断出答案，就给出推断结果并标 source=\"网络\"；\n"
-    "禁止编造证据中没有、也无法推断的信息；完全无法确认的字段留空并写进 unknown_fields 和 notes。"
-)
-
-ORGANIZER_PROMPTS: dict[str, str] = {
-    "歌曲": """你是音乐内容整理助手。请基于证据，提取视频中歌曲的歌名、歌手、版本信息。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{"song_name": "歌名", "artist": "歌手", "version": "版本信息",
- "unknown_fields": ["证据中无法确认的字段名"],
- "provenance": {"song_name": {"source": "视频|网络|未知", "evidence": "依据"},
-                "artist": {...}, "version": {...}},
- "notes": "证据不足时的说明"}
-2. """ + _PROVENANCE_RULE + """
-3. 用中文回答。""",
-    "美食": """你是美食内容整理助手。请基于证据，把视频中的美食信息整理成结构化菜谱。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{"dish_name": "菜名", "ingredients": ["食材1", "食材2"],
- "steps": [{"step": 1, "description": "步骤描述", "timestamp": 对应视频秒数或 null}],
- "unknown_fields": ["证据中无法确认的字段名"],
- "provenance": {"dish_name": {"source": "视频|网络|未知", "evidence": "依据"},
-                "ingredients": {...}, "steps": {...}},
- "notes": "证据不足时的说明"}
-2. 菜名候选规则：若视觉证据中出现"候选菜品"，从中挑选出现次数最多且置信度最高的作为菜名候选
-   （例如 CLIP 视觉识别到'麻辣烫(0.57)'、'水煮鱼(0.55)'），dish_name 填该菜名，
-   provenance 标 source="视频"，evidence 写"CLIP 视觉识别候选菜品 xxx(0.xx)"；
-   若视频各时段展示多个不同菜品、无单一菜品主导（多菜品混剪），
-   dish_name 填"多菜品混剪（A、B、C 等）"，provenance 标 source="视频"并在 notes 说明；
-   仅当候选菜品互相矛盾或最高置信度低于 0.3 时，dish_name 才留空并标"未知"。
-3. """ + _PROVENANCE_RULE + """
-4. 用中文回答。""",
-    "美文": """你是美文内容整理助手。请基于证据，把视频中的文字内容整理成可阅读文稿。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{"original_text": "原文（逐字来自证据，OCR/ASR 原文拼接）",
- "proofread_candidates": ["原文有误处 → 校订后文本"],
- "author": "作者（证据中出现才填）",
- "unknown_fields": ["证据中无法确认的字段名"],
- "provenance": {"original_text": {"source": "视频", "evidence": "依据"},
-                "author": {"source": "视频|网络|未知", "evidence": "依据"}},
- "notes": "证据不足时的说明"}
-2. """ + _PROVENANCE_RULE + """
-3. 用中文回答。""",
-    "其他": """你是短视频内容整理助手。请基于证据，给出该视频（不属于歌曲/美食/美文）的一句话概述。
-
-要求：
-1. 只输出一个合法 JSON 对象（不要 Markdown 代码块）：
-{"summary": "视频内容一句话概述", "notes": "该视频不属于歌曲/美食/美文三类，暂不深入处理"}
-2. 严格基于证据，禁止编造；用中文回答。""",
-}
-
-# ---------------------------------------------------------------------------
-# 注册表（扩展点）
+# 注册表（扩展点）—— 整理器提示词已收口到 second_layer/prompts.py
 # ---------------------------------------------------------------------------
 
 ORGANIZER_REGISTRY: dict[str, dict[str, Any]] = {
-    "歌曲": {"schema": SongResult, "prompt": ORGANIZER_PROMPTS["歌曲"]},
-    "美食": {"schema": RecipeResult, "prompt": ORGANIZER_PROMPTS["美食"]},
-    "美文": {"schema": ProseResult, "prompt": ORGANIZER_PROMPTS["美文"]},
-    "其他": {"schema": OtherResult, "prompt": ORGANIZER_PROMPTS["其他"]},
+    "歌曲": {"schema": SongResult},
+    "美食": {"schema": RecipeResult},
+    "美文": {"schema": ProseResult},
+    "其他": {"schema": OtherResult},
 }
 
 _DEFAULT_CATEGORY = "其他"
 
 
 def register_organizer(
-    category: str, schema: Type[BaseModel], prompt: str
+    category: str, schema: Type[BaseModel], prompt: str | None = None
 ) -> None:
     """注册新的类别整理器（扩展点）。
 
     Example:
         class VlogResult(BaseModel): ...
-        register_organizer("Vlog", VlogResult, "你是Vlog整理助手……")
+        register_organizer("Vlog", VlogResult)
+
+    注意：prompt 参数已废弃，整理器提示词统一从 prompts.py 读取（支持网页编辑）。
     """
-    ORGANIZER_REGISTRY[category] = {"schema": schema, "prompt": prompt}
+    ORGANIZER_REGISTRY[category] = {"schema": schema}
     logger.info("已注册整理器: %s -> %s", category, schema.__name__)
 
 
@@ -212,7 +150,7 @@ def organize_result(
     try:
         data = call_llm(
             user_content, api_key, base_url, model, temperature, timeout,
-            system_prompt=spec["prompt"],
+            system_prompt=get_organizer_prompt(category),
             backend=backend,
         )
     except Exception as e:

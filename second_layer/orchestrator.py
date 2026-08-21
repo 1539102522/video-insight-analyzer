@@ -12,7 +12,6 @@ from typing import Any
 from .evidence_fusion import fuse_evidence
 from .llm_analyzer import (
     BACKEND_OPENAI,
-    CLASSIFY_SYSTEM_TEMPLATE,
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
     build_evidence_text,
@@ -20,6 +19,7 @@ from .llm_analyzer import (
     classify_evidence,
     collect_models,
 )
+from .prompts import get_classify_template
 from .organizers import organize_result
 from .quality_control import quality_control
 
@@ -103,7 +103,7 @@ def run_second_layer(
         try:
             result = call_llm(
                 user_content, api_key, base_url, model, temperature, timeout,
-                system_prompt=CLASSIFY_SYSTEM_TEMPLATE,
+                system_prompt=get_classify_template(),
                 backend=backend,
             )
         except Exception as e:

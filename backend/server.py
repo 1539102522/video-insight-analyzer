@@ -38,6 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import requests
 
 from first_layer.extractors import describe_registry
+from second_layer.prompts import get_all_prompts, reset_prompts, save_prompts
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT / "frontend"
@@ -1290,6 +1291,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"category": cat, "summary": text})
         elif path == "/api/queue":
             self._send_json(_queue_summary())
+        elif path == "/api/prompts":
+            self._send_json(get_all_prompts())
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -1318,6 +1321,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": f"AI 回答失败: {e}"}, 500)
                 return
             self._send_json({"reply": reply})
+            return
+
+        if path == "/api/prompts":
+            body = self.rfile.read(length)
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except Exception:
+                self._send_json({"error": "请求体不是合法 JSON"}, 400)
+                return
+            if payload.get("action") == "reset":
+                reset_prompts()
+            else:
+                prompts = payload.get("prompts") or payload
+                save_prompts(prompts)
+            self._send_json({"ok": True})
             return
 
         # 流式解析：大视频写临时文件、不占内存（修复批量上传时 MemoryError/缓冲区崩溃）
